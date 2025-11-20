@@ -2,6 +2,7 @@ mod ext;
 mod runtime;
 mod task;
 mod env;
+mod timeout;
 
 pub mod snapshot;
 

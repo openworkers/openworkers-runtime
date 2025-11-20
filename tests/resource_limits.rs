@@ -19,6 +19,7 @@ async fn test_heap_limits_configured() {
     let limits = RuntimeLimits {
         heap_initial_mb: 1,
         heap_max_mb: 64,
+        max_execution_time_ms: 0, // Disabled for this test
     };
 
     println!("\n🧪 Testing heap limits are configured...\n");
@@ -29,55 +30,6 @@ async fn test_heap_limits_configured() {
     println!("✅ Worker created with custom heap limits (1MB-64MB)\n");
 
     assert!(result.is_ok(), "Worker creation should succeed with custom limits");
-}
-
-#[tokio::test]
-async fn test_timeout_wrapper_works() {
-    env_logger::try_init().ok();
-
-    let code = r#"
-        addEventListener('fetch', (event) => {
-            event.respondWith(handleRequest());
-        });
-
-        async function handleRequest() {
-            console.log('Starting slow async operation...');
-
-            // Sleep for 500ms (will timeout at 100ms)
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            return new Response('Should timeout before this');
-        }
-    "#;
-
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
-
-    println!("\n🧪 Testing timeout wrapper (async sleep)...\n");
-
-    let mut worker = Worker::new(script, None, None).await.unwrap();
-
-    let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
-    let req = http_v02::Request::builder()
-        .uri("http://localhost/")
-        .body(bytes::Bytes::new())
-        .unwrap();
-
-    let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
-
-    // Execute with 100ms timeout (worker sleeps 500ms)
-    let timeout = Duration::from_millis(100);
-    let start = std::time::Instant::now();
-    let result = tokio::time::timeout(timeout, worker.exec(task)).await;
-    let elapsed = start.elapsed();
-
-    println!("✅ Timeout triggered after {:?}\n", elapsed);
-
-    // Should timeout
-    assert!(result.is_err(), "Worker should timeout");
-    assert!(elapsed < Duration::from_millis(200), "Should timeout quickly");
 }
 
 #[tokio::test]
@@ -127,4 +79,69 @@ async fn test_normal_execution_works() {
     // Check response
     let response = res_rx.await.unwrap();
     assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn test_synchronous_infinite_loop_termination() {
+    env_logger::try_init().ok();
+
+    let code = r#"
+        addEventListener('fetch', (event) => {
+            event.respondWith(handleRequest());
+        });
+
+        function handleRequest() {
+            console.log('Starting synchronous infinite loop...');
+
+            // Synchronous infinite loop - should be terminated by watchdog
+            while (true) {
+                // Busy loop
+            }
+
+            return new Response('Should never reach here');
+        }
+    "#;
+
+    let script = Script {
+        code: code.to_string(),
+        env: None,
+    };
+
+    let limits = RuntimeLimits {
+        heap_initial_mb: 1,
+        heap_max_mb: 128,
+        max_execution_time_ms: 100, // 100ms timeout
+    };
+
+    println!("\n🧪 Testing synchronous infinite loop termination...\n");
+
+    let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
+
+    let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
+    let req = http_v02::Request::builder()
+        .uri("http://localhost/")
+        .body(bytes::Bytes::new())
+        .unwrap();
+
+    let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
+
+    let start = std::time::Instant::now();
+    let result = worker.exec(task).await;
+    let elapsed = start.elapsed();
+
+    println!("✅ Worker terminated after {:?} with result: {:?}\n", elapsed, result);
+
+    // TimeoutGuard should terminate execution around 100ms
+    // V8 may or may not return an error after termination
+    assert!(
+        elapsed >= Duration::from_millis(90),
+        "Should run at least 90ms (near the 100ms timeout)"
+    );
+    assert!(
+        elapsed < Duration::from_millis(200),
+        "Should terminate quickly after timeout (within 200ms)"
+    );
+
+    // The worker was terminated, either with error or Ok (both are valid)
+    // The important thing is it didn't run forever
 }

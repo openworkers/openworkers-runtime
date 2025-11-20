@@ -5,6 +5,7 @@ use crate::ext::permissions_ext;
 use crate::ext::runtime_ext;
 use crate::ext::scheduled_event_ext;
 use crate::ext::Permissions;
+use crate::timeout::TimeoutGuard;
 use crate::LogEvent;
 use crate::Task;
 
@@ -87,6 +88,8 @@ pub struct RuntimeLimits {
     pub heap_initial_mb: usize,
     /// Maximum V8 heap size in MB (default: 128MB)
     pub heap_max_mb: usize,
+    /// Maximum execution time in milliseconds (default: 50ms, 0 = disabled)
+    pub max_execution_time_ms: u64,
 }
 
 impl Default for RuntimeLimits {
@@ -94,6 +97,7 @@ impl Default for RuntimeLimits {
         Self {
             heap_initial_mb: 1,
             heap_max_mb: 128,
+            max_execution_time_ms: 50,
         }
     }
 }
@@ -102,6 +106,8 @@ pub struct Worker {
     pub(crate) js_runtime: deno_core::JsRuntime,
     pub(crate) trigger_fetch: deno_core::v8::Global<deno_core::v8::Function>,
     pub(crate) trigger_scheduled: deno_core::v8::Global<deno_core::v8::Function>,
+    pub(crate) isolate_handle: v8::IsolateHandle,
+    pub(crate) limits: RuntimeLimits,
 }
 
 impl Worker {
@@ -138,6 +144,9 @@ impl Worker {
             limits.heap_initial_mb,
             limits.heap_max_mb
         );
+
+        // Capture isolate handle for termination support
+        let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
 
         let trigger_fetch;
         let trigger_scheduled;
@@ -219,11 +228,19 @@ impl Worker {
             js_runtime,
             trigger_fetch,
             trigger_scheduled,
+            isolate_handle,
+            limits,
         })
     }
 
     pub async fn exec(&mut self, mut task: Task) -> Result<(), CoreError> {
         debug!("executing task {:?}", task.task_type());
+
+        // Start timeout watchdog before execution to catch synchronous infinite loops
+        let _guard = TimeoutGuard::new(
+            self.isolate_handle.clone(),
+            self.limits.max_execution_time_ms,
+        );
 
         crate::util::exec_task(self, &mut task);
 
@@ -233,5 +250,6 @@ impl Worker {
         };
 
         self.js_runtime.run_event_loop(opts).await
+        // Guard dropped here, watchdog cancelled
     }
 }
