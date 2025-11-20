@@ -81,6 +81,15 @@ pub struct Script {
     pub env: Option<HashMap<String, String>>,
 }
 
+/// Execution time limit mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeLimitMode {
+    /// Wall-clock time (total elapsed time including I/O and sleeps)
+    WallClock,
+    /// CPU time only (actual time spent executing on CPU)
+    CpuTime,
+}
+
 /// V8 runtime resource limits configuration
 #[derive(Debug, Clone)]
 pub struct RuntimeLimits {
@@ -90,6 +99,8 @@ pub struct RuntimeLimits {
     pub heap_max_mb: usize,
     /// Maximum execution time in milliseconds (default: 50ms, 0 = disabled)
     pub max_execution_time_ms: u64,
+    /// Time limit mode (default: CPU time for better DDoS protection)
+    pub time_limit_mode: TimeLimitMode,
 }
 
 impl Default for RuntimeLimits {
@@ -98,6 +109,7 @@ impl Default for RuntimeLimits {
             heap_initial_mb: 1,
             heap_max_mb: 128,
             max_execution_time_ms: 50,
+            time_limit_mode: TimeLimitMode::CpuTime,
         }
     }
 }
@@ -236,11 +248,18 @@ impl Worker {
     pub async fn exec(&mut self, mut task: Task) -> Result<(), CoreError> {
         debug!("executing task {:?}", task.task_type());
 
+        // Start CPU time measurement
+        let cpu_timer = crate::cpu_timer::CpuTimer::start();
+
         // Start timeout watchdog before execution to catch synchronous infinite loops
-        let _guard = TimeoutGuard::new(
-            self.isolate_handle.clone(),
-            self.limits.max_execution_time_ms,
-        );
+        // Only enable watchdog for wall-clock mode. CPU time enforcement requires
+        // more complex signal-based approach (see edge-runtime for reference).
+        let timeout_ms = match self.limits.time_limit_mode {
+            TimeLimitMode::WallClock => self.limits.max_execution_time_ms,
+            TimeLimitMode::CpuTime => 0, // Disabled - CPU time not enforced yet
+        };
+
+        let _guard = TimeoutGuard::new(self.isolate_handle.clone(), timeout_ms);
 
         crate::util::exec_task(self, &mut task);
 
@@ -249,7 +268,27 @@ impl Worker {
             pump_v8_message_loop: true,
         };
 
-        self.js_runtime.run_event_loop(opts).await
+        let result = self.js_runtime.run_event_loop(opts).await;
+
+        // Log CPU time metrics
+        let cpu_time = cpu_timer.elapsed();
+        debug!(
+            "task completed: cpu_time={:?}, limit={}ms (mode={:?})",
+            cpu_time, self.limits.max_execution_time_ms, self.limits.time_limit_mode
+        );
+
+        if self.limits.time_limit_mode == TimeLimitMode::CpuTime {
+            let limit_ms = self.limits.max_execution_time_ms;
+            if limit_ms > 0 && cpu_time.as_millis() as u64 > limit_ms {
+                log::warn!(
+                    "CPU time limit exceeded: {:?} > {}ms (not enforced yet, would terminate)",
+                    cpu_time,
+                    limit_ms
+                );
+            }
+        }
+
+        result
         // Guard dropped here, watchdog cancelled
     }
 }

@@ -2392,9 +2392,11 @@ dependencies = [
  "deno_webidl",
  "env_logger",
  "http 0.2.12",
+ "libc",
  "log",
  "serde",
  "tokio",
+ "winapi",
 ]
 
 [[package]]

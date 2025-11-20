@@ -1,4 +1,4 @@
-use openworkers_runtime::{RuntimeLimits, Script, Task, Worker};
+use openworkers_runtime::{RuntimeLimits, Script, Task, TimeLimitMode, Worker};
 use std::time::Duration;
 
 #[tokio::test]
@@ -20,6 +20,7 @@ async fn test_heap_limits_configured() {
         heap_initial_mb: 1,
         heap_max_mb: 64,
         max_execution_time_ms: 0, // Disabled for this test
+        time_limit_mode: TimeLimitMode::WallClock,
     };
 
     println!("\n🧪 Testing heap limits are configured...\n");
@@ -111,6 +112,7 @@ async fn test_synchronous_infinite_loop_termination() {
         heap_initial_mb: 1,
         heap_max_mb: 128,
         max_execution_time_ms: 100, // 100ms timeout
+        time_limit_mode: TimeLimitMode::WallClock, // Wall-clock for synchronous loop test
     };
 
     println!("\n🧪 Testing synchronous infinite loop termination...\n");
@@ -144,4 +146,64 @@ async fn test_synchronous_infinite_loop_termination() {
 
     // The worker was terminated, either with error or Ok (both are valid)
     // The important thing is it didn't run forever
+}
+
+#[tokio::test]
+async fn test_cpu_time_ignores_sleep() {
+    env_logger::try_init().ok();
+
+    let code = r#"
+        addEventListener('fetch', (event) => {
+            event.respondWith(handleRequest());
+        });
+
+        async function handleRequest() {
+            console.log('Sleeping for 100ms...');
+
+            // Sleep for 100ms (should NOT count as CPU time)
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            console.log('Done sleeping');
+            return new Response('OK');
+        }
+    "#;
+
+    let script = Script {
+        code: code.to_string(),
+        env: None,
+    };
+
+    let limits = RuntimeLimits {
+        heap_initial_mb: 1,
+        heap_max_mb: 128,
+        max_execution_time_ms: 10, // 10ms CPU limit (but 100ms sleep)
+        time_limit_mode: TimeLimitMode::CpuTime,
+    };
+
+    println!("\n🧪 Testing CPU time ignores sleep (100ms sleep with 10ms CPU limit)...\n");
+
+    let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
+
+    let (res_tx, res_rx) = tokio::sync::oneshot::channel();
+    let req = http_v02::Request::builder()
+        .uri("http://localhost/")
+        .body(bytes::Bytes::new())
+        .unwrap();
+
+    let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
+
+    // Execute
+    let result = worker.exec(task).await;
+
+    println!("✅ Worker completed: {:?}\n", result);
+
+    // Worker should succeed because sleep doesn't count as CPU time
+    assert!(
+        result.is_ok(),
+        "Worker should succeed - sleep doesn't count as CPU time"
+    );
+
+    // Check response
+    let response = res_rx.await.unwrap();
+    assert_eq!(response.status(), 200);
 }

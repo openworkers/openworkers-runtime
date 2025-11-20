@@ -22,6 +22,12 @@ log = "0.4.25"
 serde = { version = "1.0.217", features = ["derive"] }
 tokio = { version = "1.43.0", features = ["full"] }
 
+# For CPU time measurement
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["processthreadsapi", "minwindef", "winbase"] }
+
 [dev-dependencies]
 actix-web = { version = "4.9.0", features = ["macros"] }
 

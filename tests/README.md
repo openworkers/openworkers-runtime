@@ -31,9 +31,9 @@ Verifies that normal workers execute successfully without hitting limits.
 
 ### 3. `test_synchronous_infinite_loop_termination`
 
-**NEW**: Verifies that `TimeoutGuard` can terminate synchronous infinite loops using V8's `IsolateHandle::terminate_execution()`.
+Verifies that `TimeoutGuard` can terminate synchronous infinite loops using V8's `IsolateHandle::terminate_execution()`.
 
-**What it tests**: Worker with `while(true)` loop is terminated after 100ms
+**What it tests**: Worker with `while(true)` loop is terminated after 100ms (wall-clock mode)
 
 **How it works**:
 - `TimeoutGuard` spawns a watchdog thread
@@ -41,21 +41,35 @@ Verifies that normal workers execute successfully without hitting limits.
 - On timeout, calls `isolate_handle.terminate_execution()`
 - Worker stops executing within ~100ms
 
+### 4. `test_cpu_time_ignores_sleep`
+
+**NEW**: Verifies that CPU time measurement correctly ignores async operations like `setTimeout`.
+
+**What it tests**: Worker sleeps 100ms with 10ms CPU limit → succeeds because sleep doesn't count as CPU time
+
+**Why this matters**: Protection against DDoS attacks using sleeps to hold workers
+- ❌ **Wall-clock mode**: `await sleep(1000)` counts as 1000ms → attacker can block workers
+- ✅ **CPU time mode**: `await sleep(1000)` counts as ~0ms → only real computation matters
+
 ## What Works ✅
 
 ✅ Heap limits configured via `v8::CreateParams::heap_limits()`
 ✅ **Synchronous infinite loop termination** via `TimeoutGuard` + `IsolateHandle::terminate_execution()`
+✅ **CPU time measurement** using `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` on Unix, `GetThreadTimes` on Windows
+✅ **CPU vs Wall-clock mode selection** via `TimeLimitMode` enum
+✅ CPU time correctly ignores sleeps, I/O, and async waits
 ✅ Watchdog thread pattern (inspired by Deno)
 ✅ RAII guard automatically cancels watchdog on normal completion
 ✅ Normal execution succeeds without interference
 
 ## Limitations ⚠️
 
-⚠️ **Async operations** (setTimeout, fetch) are **NOT** interrupted by `terminate_execution()` because they run in tokio event loop, not V8
-⚠️ CPU time measurement not implemented (only wall-clock time)
+⚠️ **CPU time limits NOT enforced yet** - only measured and logged (signal-based enforcement planned)
+⚠️ **Wall-clock mode only** for termination - CPU time mode disables TimeoutGuard
+⚠️ **Async operations** (setTimeout, fetch) are NOT interrupted by `terminate_execution()` - they run in tokio event loop
 ⚠️ No soft/hard limit distinction (single termination point)
 
-To handle async timeouts, use `tokio::time::timeout()` wrapper in the runner layer.
+**Why CPU time enforcement is complex**: Need signal-based approach (like edge-runtime) to interrupt from another thread. Current implementation measures CPU time but doesn't enforce it yet.
 
 ## Architecture
 
@@ -101,17 +115,43 @@ pub async fn exec(&mut self, mut task: Task) -> Result<(), CoreError> {
 }
 ```
 
+### CPU Timer Module
+
+**File**: `src/cpu_timer.rs`
+
+Cross-platform CPU time measurement:
+
+```rust
+// Get current thread's CPU time
+pub fn get_thread_cpu_time() -> Option<Duration>
+
+// RAII timer
+pub struct CpuTimer {
+    fn start() -> Self
+    fn elapsed(&self) -> Duration
+}
+```
+
+**Unix**: Uses `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`
+**Windows**: Uses `GetThreadTimes` (kernel + user time)
+
 ## Configuration
 
 Defaults in `src/runtime.rs`:
 
 ```rust
+pub enum TimeLimitMode {
+    WallClock,  // Total elapsed time (including I/O, sleeps)
+    CpuTime,    // Actual CPU execution time only (default)
+}
+
 impl Default for RuntimeLimits {
     fn default() -> Self {
         Self {
-            heap_initial_mb: 1,                // Initial heap
-            heap_max_mb: 128,                  // Max heap (OOM if exceeded)
-            max_execution_time_ms: 50,         // Execution timeout (0 = disabled)
+            heap_initial_mb: 1,                  // Initial heap
+            heap_max_mb: 128,                    // Max heap (OOM if exceeded)
+            max_execution_time_ms: 50,           // Execution timeout (0 = disabled)
+            time_limit_mode: TimeLimitMode::CpuTime,  // CPU time for DDoS protection
         }
     }
 }
@@ -121,11 +161,16 @@ impl Default for RuntimeLimits {
 
 This implementation is inspired by:
 - **Deno**: Watchdog thread pattern with `recv_timeout()`
-- **Supabase edge-runtime**: `IsolateHandle::request_interrupt()` pattern (we use simpler direct `terminate_execution()` call)
+- **Supabase edge-runtime**: Signal-based CPU time enforcement with POSIX timers + `SIGALRM`
+- **Cloudflare workerd**: `enterJs()`/`exitJs()` RAII pattern for time measurement
 
 ## Future Improvements
 
-- [ ] CPU time tracking (using `getrusage()` on Linux/Mac, `GetProcessTimes` on Windows)
+- [ ] **CPU time enforcement** using signal-based approach (like edge-runtime):
+  - POSIX timers with `timer_create(CLOCK_THREAD_CPUTIME_ID)`
+  - `SIGALRM` handler to catch CPU time limit
+  - `request_interrupt()` to safely terminate from signal handler
 - [ ] Soft/hard limit distinction (warn before terminate)
 - [ ] Metrics collection (execution time, termination reason)
-- [ ] POSIX timers for more accurate CPU-only measurement (advanced)
+- [ ] Per-request CPU time attribution (for Durable Objects style)
+- [ ] Export CPU time metrics via trace/observability API

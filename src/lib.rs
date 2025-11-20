@@ -3,6 +3,7 @@ mod runtime;
 mod task;
 mod env;
 mod timeout;
+mod cpu_timer;
 
 pub mod snapshot;
 
@@ -13,6 +14,7 @@ pub (crate) use runtime::extensions;
 pub use runtime::Script;
 pub use runtime::Worker;
 pub use runtime::RuntimeLimits;
+pub use runtime::TimeLimitMode;
 pub use ext::LogEvent;
 pub use ext::FetchInit;
 pub use ext::ScheduledInit;
