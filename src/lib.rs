@@ -11,6 +11,7 @@ pub (crate) use runtime::extensions;
 
 pub use runtime::Script;
 pub use runtime::Worker;
+pub use runtime::RuntimeLimits;
 pub use ext::LogEvent;
 pub use ext::FetchInit;
 pub use ext::ScheduledInit;

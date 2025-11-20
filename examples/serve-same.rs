@@ -123,7 +123,7 @@ async fn main() -> std::io::Result<()> {
                     let local = tokio::task::LocalSet::new();
 
                     let tasks = local.spawn_local(async move {
-                        let mut worker = Worker::new(script, None).await.unwrap();
+                        let mut worker = Worker::new(script, None, None).await.unwrap();
 
                         loop {
                             match task_rx.recv().await {

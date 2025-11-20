@@ -80,6 +80,24 @@ pub struct Script {
     pub env: Option<HashMap<String, String>>,
 }
 
+/// V8 runtime resource limits configuration
+#[derive(Debug, Clone)]
+pub struct RuntimeLimits {
+    /// Initial V8 heap size in MB (default: 1MB)
+    pub heap_initial_mb: usize,
+    /// Maximum V8 heap size in MB (default: 128MB)
+    pub heap_max_mb: usize,
+}
+
+impl Default for RuntimeLimits {
+    fn default() -> Self {
+        Self {
+            heap_initial_mb: 1,
+            heap_max_mb: 128,
+        }
+    }
+}
+
 pub struct Worker {
     pub(crate) js_runtime: deno_core::JsRuntime,
     pub(crate) trigger_fetch: deno_core::v8::Global<deno_core::v8::Function>,
@@ -90,9 +108,16 @@ impl Worker {
     pub async fn new(
         script: Script,
         log_tx: Option<std::sync::mpsc::Sender<LogEvent>>,
+        limits: Option<RuntimeLimits>,
     ) -> Result<Self, AnyError> {
         let startup_snapshot = runtime_snapshot();
         let snapshot_is_some = startup_snapshot.is_some();
+
+        let limits = limits.unwrap_or_default();
+
+        // Convert heap limits from MB to bytes
+        let heap_initial = limits.heap_initial_mb * 1024 * 1024;
+        let heap_max = limits.heap_max_mb * 1024 * 1024;
 
         let mut js_runtime = JsRuntime::new(deno_core::RuntimeOptions {
             is_main: true,
@@ -100,12 +125,18 @@ impl Worker {
             module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
             startup_snapshot,
             extension_transpiler: None,
+            create_params: Some(
+                v8::CreateParams::default()
+                    .heap_limits(heap_initial, heap_max)
+            ),
             ..Default::default()
         });
 
         debug!(
-            "runtime created ({} snapshot), bootstrapping...",
-            if snapshot_is_some { "with" } else { "without" }
+            "runtime created ({} snapshot, heap: {}MB-{}MB), bootstrapping...",
+            if snapshot_is_some { "with" } else { "without" },
+            limits.heap_initial_mb,
+            limits.heap_max_mb
         );
 
         let trigger_fetch;

@@ -54,7 +54,7 @@ async fn handle_request(data: Data<AppState>, req: HttpRequest, body: Bytes) -> 
 
         let tasks = local.spawn_local(async move {
             debug!("create worker");
-            let mut worker = Worker::new(script, None).await.unwrap();
+            let mut worker = Worker::new(script, None, None).await.unwrap();
 
             debug!("exec fetch task");
             match worker.exec(task).await {
