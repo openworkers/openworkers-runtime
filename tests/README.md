@@ -192,11 +192,24 @@ impl Drop for CpuEnforcer {
 **How it works**:
 1. **POSIX timer** created per worker with `CLOCK_THREAD_CPUTIME_ID` (tracks CPU time only)
 2. Timer configured to fire SIGALRM after N milliseconds of **actual CPU usage**
-3. **Signal handler** looks up isolate handle and calls `terminate_execution()`
-4. **Global registry** maps thread IDs to isolate handles (signal handler needs this)
-5. **Automatic cleanup** on drop - deletes timer and unregisters
+3. **signal-hook-tokio** handles SIGALRM in fully async-signal-safe manner (no locks, no allocations)
+4. **Dedicated thread** receives signal via async stream, does registry lookup
+5. Thread calls `isolate_handle.terminate_execution()` to stop worker
+6. **Automatic cleanup** on drop - deletes timer and unregisters
+
+**Async-signal-safe implementation**:
+- Signal handler (managed by signal-hook) does NO locks, NO allocations
+- Only forwards signal to async stream (using pipe internally - async-signal-safe)
+- Dedicated thread "cpu-enforcer" processes signals safely
+- All Mutex locks, HashMap lookups happen outside signal context
+- Production-grade, no risk of deadlock
 
 **Why Linux-only**: macOS/BSD don't support `timer_create()` - they use different APIs (kqueue/dispatch)
+
+**Dependencies**:
+- `signal-hook` - Async-signal-safe signal handling
+- `signal-hook-tokio` - Async stream of signals for tokio
+- `libc` - POSIX timer syscalls
 
 ## Configuration
 
@@ -253,4 +266,3 @@ await sleep(100); // OK: 0ms CPU, 100ms wall-clock
 - [ ] Metrics collection (execution time, termination reason)
 - [ ] Per-request CPU time attribution (for Durable Objects style)
 - [ ] Export CPU time metrics via trace/observability API
-- [ ] Lock-free signal handler (currently uses Mutex, not async-signal-safe)
