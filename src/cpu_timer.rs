@@ -3,38 +3,24 @@ use std::time::Duration;
 /// Get current thread's CPU time (time actually spent executing on CPU).
 ///
 /// This excludes time spent waiting for I/O, sleeping, or blocked on locks.
-/// Uses `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` on Unix and `GetThreadTimes` on Windows.
+/// Uses `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` on Unix.
+///
+/// # Platform Support
+///
+/// - **Unix (Linux, macOS, BSD)**: Supported via `CLOCK_THREAD_CPUTIME_ID`
+/// - **Windows**: Not supported (returns None)
 ///
 /// # Returns
 ///
 /// CPU time as a Duration, or None if measurement failed.
-pub fn get_thread_cpu_time() -> Option<Duration> {
-    #[cfg(unix)]
-    {
-        get_thread_cpu_time_unix()
-    }
-
-    #[cfg(windows)]
-    {
-        get_thread_cpu_time_windows()
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        None
-    }
-}
-
 #[cfg(unix)]
-fn get_thread_cpu_time_unix() -> Option<Duration> {
+pub fn get_thread_cpu_time() -> Option<Duration> {
     use std::mem::MaybeUninit;
 
     let mut time = MaybeUninit::<libc::timespec>::uninit();
 
     // SAFETY: clock_gettime is safe to call with valid pointers
-    let ret = unsafe {
-        libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, time.as_mut_ptr())
-    };
+    let ret = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, time.as_mut_ptr()) };
 
     if ret == 0 {
         let time = unsafe { time.assume_init() };
@@ -49,42 +35,10 @@ fn get_thread_cpu_time_unix() -> Option<Duration> {
     }
 }
 
-#[cfg(windows)]
-fn get_thread_cpu_time_windows() -> Option<Duration> {
-    use winapi::shared::minwindef::FILETIME;
-    use winapi::um::processthreadsapi::{GetCurrentThread, GetThreadTimes};
-
-    let mut creation = FILETIME::default();
-    let mut exit = FILETIME::default();
-    let mut kernel = FILETIME::default();
-    let mut user = FILETIME::default();
-
-    // SAFETY: GetThreadTimes is safe with valid pointers
-    let ret = unsafe {
-        GetThreadTimes(
-            GetCurrentThread(),
-            &mut creation,
-            &mut exit,
-            &mut kernel,
-            &mut user,
-        )
-    };
-
-    if ret != 0 {
-        // Convert FILETIME to u64 (100-nanosecond intervals since 1601-01-01)
-        let kernel_time = ((kernel.dwHighDateTime as u64) << 32) | (kernel.dwLowDateTime as u64);
-        let user_time = ((user.dwHighDateTime as u64) << 32) | (user.dwLowDateTime as u64);
-
-        // Total CPU time = kernel time + user time
-        let total_100ns = kernel_time + user_time;
-
-        // Convert to nanoseconds
-        let total_ns = total_100ns * 100;
-
-        Some(Duration::from_nanos(total_ns))
-    } else {
-        None
-    }
+#[cfg(not(unix))]
+pub fn get_thread_cpu_time() -> Option<Duration> {
+    // CPU time measurement not supported on this platform
+    None
 }
 
 /// RAII guard that measures CPU time spent in a block of code.

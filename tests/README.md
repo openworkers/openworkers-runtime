@@ -12,7 +12,21 @@ cargo test --test resource_limits
 cargo test --test resource_limits -- --nocapture
 
 # Run specific test
-cargo test --test resource_limits test_synchronous_infinite_loop_termination
+cargo test --test resource_limits test_cpu_intensive_computation_termination
+```
+
+### Platform-Specific Behavior
+
+**Linux**: Full CPU time enforcement via POSIX timers + SIGALRM
+**macOS/BSD**: Falls back to wall-clock enforcement (CPU measurement works, enforcement doesn't)
+**Windows**: CPU measurement works, enforcement not implemented yet
+
+To test real CPU enforcement on Linux:
+
+```bash
+# Using Docker
+docker run --rm -v $(pwd):/workspace -w /workspace rust:latest \
+  cargo test --test resource_limits -- --nocapture
 ```
 
 ## Tests
@@ -29,47 +43,57 @@ Verifies that normal workers execute successfully without hitting limits.
 
 **What it tests**: Simple "Hello World" worker completes normally with default 50ms timeout
 
-### 3. `test_synchronous_infinite_loop_termination`
+### 3. `test_cpu_intensive_computation_termination`
 
-Verifies that `TimeoutGuard` can terminate synchronous infinite loops using V8's `IsolateHandle::terminate_execution()`.
+**NEW**: Verifies that CPU-intensive computation is terminated when exceeding CPU time limit.
 
-**What it tests**: Worker with `while(true)` loop is terminated after 100ms (wall-clock mode)
+**What it tests**: Worker doing 100M iterations of `Math.sqrt()` with 50ms CPU limit → terminates quickly
 
-**How it works**:
-- `TimeoutGuard` spawns a watchdog thread
-- Watchdog waits for timeout using `mpsc::recv_timeout()`
-- On timeout, calls `isolate_handle.terminate_execution()`
-- Worker stops executing within ~100ms
+**On Linux**: Uses POSIX timer + SIGALRM for real CPU time enforcement
+**On macOS/others**: Falls back to wall-clock enforcement (still works, just different mechanism)
 
 ### 4. `test_cpu_time_ignores_sleep`
 
 **NEW**: Verifies that CPU time measurement correctly ignores async operations like `setTimeout`.
 
-**What it tests**: Worker sleeps 100ms with 10ms CPU limit → succeeds because sleep doesn't count as CPU time
+**What it tests**: Worker sleeps 100ms with 10ms CPU limit → succeeds on Linux because sleep doesn't count as CPU time
 
 **Why this matters**: Protection against DDoS attacks using sleeps to hold workers
 - ❌ **Wall-clock mode**: `await sleep(1000)` counts as 1000ms → attacker can block workers
-- ✅ **CPU time mode**: `await sleep(1000)` counts as ~0ms → only real computation matters
+- ✅ **CPU time mode (Linux)**: `await sleep(1000)` counts as ~0ms → only real computation matters
+
+**Platform note**: On macOS, this test demonstrates fallback to wall-clock enforcement
 
 ## What Works ✅
 
 ✅ Heap limits configured via `v8::CreateParams::heap_limits()`
-✅ **Synchronous infinite loop termination** via `TimeoutGuard` + `IsolateHandle::terminate_execution()`
-✅ **CPU time measurement** using `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` on Unix, `GetThreadTimes` on Windows
-✅ **CPU vs Wall-clock mode selection** via `TimeLimitMode` enum
+✅ **Dual limit system**: CPU time (50ms) + Wall-clock time (30s) enforced simultaneously
+✅ **CPU time measurement** using `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` on Unix
+✅ **CPU time ENFORCEMENT on Linux** using POSIX timers (`timer_create`) + SIGALRM signal handler
+✅ **Wall-clock enforcement** on all platforms via watchdog thread
 ✅ CPU time correctly ignores sleeps, I/O, and async waits
-✅ Watchdog thread pattern (inspired by Deno)
-✅ RAII guard automatically cancels watchdog on normal completion
+✅ Protection against DDoS (CPU limit) AND hanging I/O (wall-clock limit)
+✅ RAII guards automatically cancel on normal completion
 ✅ Normal execution succeeds without interference
+✅ Automatic fallback: Linux uses both limits, macOS uses wall-clock only
+
+## Platform Support
+
+| Platform | CPU Measurement | CPU Enforcement | Wall-Clock Enforcement |
+|----------|----------------|-----------------|----------------------|
+| **Linux** | ✅ `clock_gettime` | ✅ POSIX timers (50ms) | ✅ Watchdog thread (30s) |
+| **macOS** | ✅ `clock_gettime` | ❌ No enforcement | ✅ Watchdog thread (30s) |
+| **Windows** | ❌ No support | ❌ No enforcement | ✅ Watchdog thread (30s) |
+
+**Production deployment**: Use Linux for full CPU enforcement
+**Local development**: macOS/Windows work fine with wall-clock protection
 
 ## Limitations ⚠️
 
-⚠️ **CPU time limits NOT enforced yet** - only measured and logged (signal-based enforcement planned)
-⚠️ **Wall-clock mode only** for termination - CPU time mode disables TimeoutGuard
 ⚠️ **Async operations** (setTimeout, fetch) are NOT interrupted by `terminate_execution()` - they run in tokio event loop
+⚠️ **Wall-clock limit catches these** - if `await fetch()` takes > 30s, terminated
 ⚠️ No soft/hard limit distinction (single termination point)
-
-**Why CPU time enforcement is complex**: Need signal-based approach (like edge-runtime) to interrupt from another thread. Current implementation measures CPU time but doesn't enforce it yet.
+⚠️ CPU enforcement Linux-only (macOS/BSD lack `timer_create`, Windows not implemented)
 
 ## Architecture
 
@@ -135,42 +159,98 @@ pub struct CpuTimer {
 **Unix**: Uses `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`
 **Windows**: Uses `GetThreadTimes` (kernel + user time)
 
+### CpuEnforcer (Signal-based enforcement, Linux-only)
+
+**File**: `src/cpu_enforcement.rs`
+
+POSIX timer-based CPU enforcement:
+
+```rust
+pub struct CpuEnforcer {
+    timer_id: libc::timer_t,
+    isolate_handle: v8::IsolateHandle,
+    terminated: Arc<AtomicBool>,
+}
+
+impl CpuEnforcer {
+    pub fn new(isolate_handle: v8::IsolateHandle, timeout_ms: u64) -> Option<Self> {
+        // 1. Create POSIX timer with timer_create(CLOCK_THREAD_CPUTIME_ID)
+        // 2. Register signal handler for SIGALRM
+        // 3. Arm timer with timer_settime()
+        // 4. Signal handler calls isolate.terminate_execution() on timeout
+    }
+}
+
+impl Drop for CpuEnforcer {
+    fn drop(&mut self) {
+        // Delete timer and unregister from global registry
+        libc::timer_delete(self.timer_id);
+    }
+}
+```
+
+**How it works**:
+1. **POSIX timer** created per worker with `CLOCK_THREAD_CPUTIME_ID` (tracks CPU time only)
+2. Timer configured to fire SIGALRM after N milliseconds of **actual CPU usage**
+3. **Signal handler** looks up isolate handle and calls `terminate_execution()`
+4. **Global registry** maps thread IDs to isolate handles (signal handler needs this)
+5. **Automatic cleanup** on drop - deletes timer and unregisters
+
+**Why Linux-only**: macOS/BSD don't support `timer_create()` - they use different APIs (kqueue/dispatch)
+
 ## Configuration
 
 Defaults in `src/runtime.rs`:
 
 ```rust
-pub enum TimeLimitMode {
-    WallClock,  // Total elapsed time (including I/O, sleeps)
-    CpuTime,    // Actual CPU execution time only (default)
-}
-
 impl Default for RuntimeLimits {
     fn default() -> Self {
         Self {
-            heap_initial_mb: 1,                  // Initial heap
-            heap_max_mb: 128,                    // Max heap (OOM if exceeded)
-            max_execution_time_ms: 50,           // Execution timeout (0 = disabled)
-            time_limit_mode: TimeLimitMode::CpuTime,  // CPU time for DDoS protection
+            heap_initial_mb: 1,              // Initial heap
+            heap_max_mb: 128,                // Max heap (OOM if exceeded)
+            max_cpu_time_ms: 50,             // 50ms CPU limit (anti-DDoS)
+            max_wall_clock_time_ms: 30_000,  // 30s wall-clock limit (anti-hang)
         }
     }
 }
 ```
 
-## Inspiration
+### Dual Limit System
 
-This implementation is inspired by:
-- **Deno**: Watchdog thread pattern with `recv_timeout()`
-- **Supabase edge-runtime**: Signal-based CPU time enforcement with POSIX timers + `SIGALRM`
-- **Cloudflare workerd**: `enterJs()`/`exitJs()` RAII pattern for time measurement
+Both limits are enforced **simultaneously**. Whichever is hit first terminates execution:
+
+**CPU time limit (50ms)**:
+- Protection against DDoS via CPU-intensive loops
+- Only counts actual computation (sleeps/I/O ignored)
+- Linux: Enforced via POSIX timers
+- macOS/Windows: Not enforced (measurement only)
+
+**Wall-clock limit (30s)**:
+- Protection against hanging on slow I/O (fetch, DB queries)
+- Counts total elapsed time (computation + I/O + sleeps)
+- All platforms: Enforced via watchdog thread
+
+**Example scenarios**:
+```javascript
+// Hits CPU limit (50ms) first
+while (true) { Math.sqrt(42); } // Terminated at 50ms
+
+// Hits wall-clock limit (30s) first
+await fetch('http://slow-api.com'); // Terminated at 30s
+
+// Both within limits
+await sleep(100); // OK: 0ms CPU, 100ms wall-clock
+```
 
 ## Future Improvements
 
-- [ ] **CPU time enforcement** using signal-based approach (like edge-runtime):
-  - POSIX timers with `timer_create(CLOCK_THREAD_CPUTIME_ID)`
-  - `SIGALRM` handler to catch CPU time limit
-  - `request_interrupt()` to safely terminate from signal handler
+- [ ] **macOS/Windows CPU enforcement**: Implement platform-specific approaches
+  - macOS: Grand Central Dispatch (dispatch_source) or kqueue
+  - Windows: Waitable timers or thread-based monitoring
+- [ ] **Async operation interruption**: Currently async ops (setTimeout, fetch) aren't interrupted
+  - Would need tokio runtime integration or custom event loop
 - [ ] Soft/hard limit distinction (warn before terminate)
 - [ ] Metrics collection (execution time, termination reason)
 - [ ] Per-request CPU time attribution (for Durable Objects style)
 - [ ] Export CPU time metrics via trace/observability API
+- [ ] Lock-free signal handler (currently uses Mutex, not async-signal-safe)

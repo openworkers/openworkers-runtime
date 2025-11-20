@@ -2394,9 +2394,9 @@ dependencies = [
  "http 0.2.12",
  "libc",
  "log",
+ "once_cell",
  "serde",
  "tokio",
- "winapi",
 ]
 
 [[package]]

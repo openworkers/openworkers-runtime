@@ -81,15 +81,6 @@ pub struct Script {
     pub env: Option<HashMap<String, String>>,
 }
 
-/// Execution time limit mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TimeLimitMode {
-    /// Wall-clock time (total elapsed time including I/O and sleeps)
-    WallClock,
-    /// CPU time only (actual time spent executing on CPU)
-    CpuTime,
-}
-
 /// V8 runtime resource limits configuration
 #[derive(Debug, Clone)]
 pub struct RuntimeLimits {
@@ -97,10 +88,12 @@ pub struct RuntimeLimits {
     pub heap_initial_mb: usize,
     /// Maximum V8 heap size in MB (default: 128MB)
     pub heap_max_mb: usize,
-    /// Maximum execution time in milliseconds (default: 50ms, 0 = disabled)
-    pub max_execution_time_ms: u64,
-    /// Time limit mode (default: CPU time for better DDoS protection)
-    pub time_limit_mode: TimeLimitMode,
+    /// Maximum CPU time in milliseconds (default: 50ms, 0 = disabled)
+    /// Only actual computation counts, sleeps/I/O don't count. Linux-only enforcement.
+    pub max_cpu_time_ms: u64,
+    /// Maximum wall-clock time in milliseconds (default: 30s, 0 = disabled)
+    /// Total elapsed time including I/O. Prevents hanging on slow external APIs.
+    pub max_wall_clock_time_ms: u64,
 }
 
 impl Default for RuntimeLimits {
@@ -108,8 +101,8 @@ impl Default for RuntimeLimits {
         Self {
             heap_initial_mb: 1,
             heap_max_mb: 128,
-            max_execution_time_ms: 50,
-            time_limit_mode: TimeLimitMode::CpuTime,
+            max_cpu_time_ms: 50,           // 50ms CPU (anti-DDoS)
+            max_wall_clock_time_ms: 30_000, // 30s total (anti-hang)
         }
     }
 }
@@ -251,15 +244,20 @@ impl Worker {
         // Start CPU time measurement
         let cpu_timer = crate::cpu_timer::CpuTimer::start();
 
-        // Start timeout watchdog before execution to catch synchronous infinite loops
-        // Only enable watchdog for wall-clock mode. CPU time enforcement requires
-        // more complex signal-based approach (see edge-runtime for reference).
-        let timeout_ms = match self.limits.time_limit_mode {
-            TimeLimitMode::WallClock => self.limits.max_execution_time_ms,
-            TimeLimitMode::CpuTime => 0, // Disabled - CPU time not enforced yet
-        };
+        // Enforce BOTH CPU and wall-clock limits simultaneously
+        // Whichever limit is hit first will terminate execution
 
-        let _guard = TimeoutGuard::new(self.isolate_handle.clone(), timeout_ms);
+        // 1. CPU time enforcement (Linux-only, via POSIX timer + SIGALRM)
+        let _cpu_enforcer = crate::cpu_enforcement::CpuEnforcer::new(
+            self.isolate_handle.clone(),
+            self.limits.max_cpu_time_ms,
+        );
+
+        // 2. Wall-clock enforcement (all platforms, via watchdog thread)
+        let _wall_guard = TimeoutGuard::new(
+            self.isolate_handle.clone(),
+            self.limits.max_wall_clock_time_ms,
+        );
 
         crate::util::exec_task(self, &mut task);
 
@@ -273,22 +271,13 @@ impl Worker {
         // Log CPU time metrics
         let cpu_time = cpu_timer.elapsed();
         debug!(
-            "task completed: cpu_time={:?}, limit={}ms (mode={:?})",
-            cpu_time, self.limits.max_execution_time_ms, self.limits.time_limit_mode
+            "task completed: cpu_time={:?}, cpu_limit={}ms, wall_limit={}ms",
+            cpu_time,
+            self.limits.max_cpu_time_ms,
+            self.limits.max_wall_clock_time_ms
         );
 
-        if self.limits.time_limit_mode == TimeLimitMode::CpuTime {
-            let limit_ms = self.limits.max_execution_time_ms;
-            if limit_ms > 0 && cpu_time.as_millis() as u64 > limit_ms {
-                log::warn!(
-                    "CPU time limit exceeded: {:?} > {}ms (not enforced yet, would terminate)",
-                    cpu_time,
-                    limit_ms
-                );
-            }
-        }
-
         result
-        // Guard dropped here, watchdog cancelled
+        // Guards dropped here, watchdogs cancelled
     }
 }
