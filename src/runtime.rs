@@ -130,6 +130,10 @@ impl Worker {
         let heap_initial = limits.heap_initial_mb * 1024 * 1024;
         let heap_max = limits.heap_max_mb * 1024 * 1024;
 
+        // Create custom ArrayBuffer allocator to enforce memory limits on external memory
+        // This is critical: V8 heap limits don't cover ArrayBuffers, Uint8Array, etc.
+        let array_buffer_allocator = crate::array_buffer_allocator::CustomAllocator::new(heap_max);
+
         let mut js_runtime = JsRuntime::new(deno_core::RuntimeOptions {
             is_main: true,
             extensions: extensions(snapshot_is_some),
@@ -139,6 +143,7 @@ impl Worker {
             create_params: Some(
                 v8::CreateParams::default()
                     .heap_limits(heap_initial, heap_max)
+                    .array_buffer_allocator(array_buffer_allocator.into_v8_allocator())
             ),
             ..Default::default()
         });

@@ -5,6 +5,7 @@ mod env;
 mod timeout;
 mod cpu_timer;
 mod cpu_enforcement;
+mod array_buffer_allocator;
 
 pub mod snapshot;
 

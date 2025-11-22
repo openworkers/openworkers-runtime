@@ -29,10 +29,7 @@ impl CpuEnforcer {
     /// Create a new CPU enforcer with the given timeout in milliseconds.
     ///
     /// Returns None if CPU enforcement is not available or setup fails.
-    pub fn new(
-        isolate_handle: deno_core::v8::IsolateHandle,
-        timeout_ms: u64,
-    ) -> Option<Self> {
+    pub fn new(isolate_handle: deno_core::v8::IsolateHandle, timeout_ms: u64) -> Option<Self> {
         if timeout_ms == 0 {
             return None;
         }
@@ -51,11 +48,7 @@ impl CpuEnforcer {
         sigev.sigev_value.sival_ptr = enforcer_id as *mut libc::c_void;
 
         unsafe {
-            let ret = libc::timer_create(
-                libc::CLOCK_THREAD_CPUTIME_ID,
-                &mut sigev,
-                &mut timer_id,
-            );
+            let ret = libc::timer_create(libc::CLOCK_THREAD_CPUTIME_ID, &mut sigev, &mut timer_id);
 
             if ret != 0 {
                 log::error!(
