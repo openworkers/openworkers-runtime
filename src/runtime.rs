@@ -243,7 +243,7 @@ impl Worker {
         })
     }
 
-    pub async fn exec(&mut self, mut task: Task) -> Result<(), CoreError> {
+    pub async fn exec(&mut self, mut task: Task) -> Result<crate::termination::TerminationReason, CoreError> {
         debug!("executing task {:?}", task.task_type());
 
         // Start CPU time measurement
@@ -253,18 +253,18 @@ impl Worker {
         // Whichever limit is hit first will terminate execution
 
         // 1. CPU time enforcement (Linux-only, via POSIX timer + SIGALRM)
-        let _cpu_enforcer = crate::cpu_enforcement::CpuEnforcer::new(
+        let cpu_enforcer = crate::cpu_enforcement::CpuEnforcer::new(
             self.isolate_handle.clone(),
             self.limits.max_cpu_time_ms,
         );
 
         // 2. Wall-clock enforcement (all platforms, via watchdog thread)
-        let _wall_guard = TimeoutGuard::new(
+        let wall_guard = TimeoutGuard::new(
             self.isolate_handle.clone(),
             self.limits.max_wall_clock_time_ms,
         );
 
-        crate::util::exec_task(self, &mut task);
+        let trigger_exception = crate::util::exec_task(self, &mut task);
 
         let opts = deno_core::PollEventLoopOptions {
             wait_for_inspector: false,
@@ -282,7 +282,47 @@ impl Worker {
             self.limits.max_wall_clock_time_ms
         );
 
-        result
-        // Guards dropped here, watchdogs cancelled
+        // Determine termination reason by inspecting guards, trigger result, and error
+        let termination_reason = if let Some(exception_msg) = trigger_exception {
+            // Trigger call failed (exception thrown during event dispatch)
+            // Check if it's a memory-related exception
+            if exception_msg.contains("Array buffer allocation failed")
+                || exception_msg.contains("RangeError")
+                || exception_msg.contains("out of memory")
+            {
+                crate::termination::TerminationReason::MemoryLimit
+            } else {
+                crate::termination::TerminationReason::Exception
+            }
+        } else if result.is_ok() {
+            crate::termination::TerminationReason::Success
+        } else {
+            // Check which limit was exceeded by inspecting the guards
+            let cpu_limit_hit = cpu_enforcer.as_ref().map(|e| e.was_terminated()).unwrap_or(false);
+            let wall_clock_hit = wall_guard.was_triggered();
+
+            if cpu_limit_hit {
+                crate::termination::TerminationReason::CpuTimeLimit
+            } else if wall_clock_hit {
+                crate::termination::TerminationReason::WallClockTimeout
+            } else {
+                // Check if it's a memory error by inspecting the error message
+                let error_msg = result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+                if error_msg.contains("out of memory")
+                    || error_msg.contains("Array buffer allocation failed")
+                    || error_msg.contains("RangeError")
+                {
+                    crate::termination::TerminationReason::MemoryLimit
+                } else {
+                    crate::termination::TerminationReason::Exception
+                }
+            }
+        };
+
+        debug!("worker terminated: reason={:?}", termination_reason);
+
+        // Return the termination reason (guards dropped here, watchdogs cancelled)
+        // Always return Ok with the reason - the reason itself indicates success/failure
+        Ok(termination_reason)
     }
 }

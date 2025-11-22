@@ -23,7 +23,8 @@ pub(crate) fn extract_trigger<'a>(
     Some(v8::Global::new(scope, ret))
 }
 
-pub(crate) fn exec_task(worker: &mut Worker, task: &mut Task) {
+/// Execute a task and return the exception message if one occurred
+pub(crate) fn exec_task(worker: &mut Worker, task: &mut Task) -> Option<String> {
     let rid = {
         let op_state_rc = worker.js_runtime.op_state();
         let mut op_state = op_state_rc.borrow_mut();
@@ -48,8 +49,28 @@ pub(crate) fn exec_task(worker: &mut Worker, task: &mut Task) {
 
     let rid = v8::Integer::new(scope, rid as i32).into();
 
-    match trigger.call(scope, recv.into(), &[rid]) {
-        Some(_) => log::debug!("successfully called trigger"),
-        None => log::error!("failed to call trigger"),
-    };
+    // Use TryCatch to capture exception details
+    let mut try_catch = v8::TryCatch::new(scope);
+
+    match trigger.call(&mut try_catch, recv.into(), &[rid]) {
+        Some(_) => {
+            log::debug!("successfully called trigger");
+            None
+        }
+        None => {
+            // Get the exception message from TryCatch
+            let exception_str = if try_catch.has_caught() {
+                try_catch
+                    .exception()
+                    .and_then(|ex| ex.to_string(&mut try_catch))
+                    .map(|s| s.to_rust_string_lossy(&mut try_catch))
+                    .unwrap_or_else(|| "Unknown exception".to_string())
+            } else {
+                "Unknown exception".to_string()
+            };
+
+            log::error!("failed to call trigger: {}", exception_str);
+            Some(exception_str)
+        }
+    }
 }

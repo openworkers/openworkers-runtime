@@ -6,6 +6,7 @@ mod timeout;
 mod cpu_timer;
 mod cpu_enforcement;
 mod array_buffer_allocator;
+mod termination;
 
 pub mod snapshot;
 
@@ -22,3 +23,4 @@ pub use ext::ScheduledInit;
 pub use deno_core::error::AnyError;
 pub use task::Task;
 pub use task::TaskType;
+pub use termination::TerminationReason;

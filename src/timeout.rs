@@ -1,4 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -20,6 +22,7 @@ use std::time::Duration;
 pub struct TimeoutGuard {
     cancel_tx: Option<mpsc::Sender<()>>,
     thread_handle: Option<thread::JoinHandle<()>>,
+    triggered: Arc<AtomicBool>,
 }
 
 impl TimeoutGuard {
@@ -30,15 +33,19 @@ impl TimeoutGuard {
     /// * `isolate_handle` - Thread-safe handle to the V8 isolate
     /// * `timeout_ms` - Timeout in milliseconds (0 = disabled)
     pub fn new(isolate_handle: deno_core::v8::IsolateHandle, timeout_ms: u64) -> Self {
+        let triggered = Arc::new(AtomicBool::new(false));
+
         // If timeout is 0, create disabled guard
         if timeout_ms == 0 {
             return Self {
                 cancel_tx: None,
                 thread_handle: None,
+                triggered,
             };
         }
 
         let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
+        let triggered_clone = triggered.clone();
 
         let thread_handle = thread::spawn(move || {
             let timeout = Duration::from_millis(timeout_ms);
@@ -52,6 +59,7 @@ impl TimeoutGuard {
                 // Timeout expired - terminate execution
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     log::warn!("Execution timeout after {}ms, terminating isolate", timeout_ms);
+                    triggered_clone.store(true, Ordering::Relaxed);
                     isolate_handle.terminate_execution();
                 }
                 // Channel disconnected (shouldn't happen)
@@ -64,7 +72,13 @@ impl TimeoutGuard {
         Self {
             cancel_tx: Some(cancel_tx),
             thread_handle: Some(thread_handle),
+            triggered,
         }
+    }
+
+    /// Check if the timeout was triggered
+    pub fn was_triggered(&self) -> bool {
+        self.triggered.load(Ordering::Relaxed)
     }
 }
 
