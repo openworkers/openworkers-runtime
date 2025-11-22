@@ -183,26 +183,22 @@ impl Worker {
             );
             let script = deno_core::ModuleCodeString::from(script);
 
-            match js_runtime.execute_script(deno_core::located_script_name!(), script) {
-                Ok(triggers) => {
-                    let scope = &mut js_runtime.handle_scope();
+            let triggers = js_runtime.execute_script(deno_core::located_script_name!(), script)
+                .map_err(|e| AnyError::msg(format!("Bootstrap failed: {}", e)))?;
 
-                    let triggers = v8::Local::new(scope, triggers);
+            let scope = &mut js_runtime.handle_scope();
+            let triggers = v8::Local::new(scope, triggers);
 
-                    debug!("bootstrap succeeded with triggers: {:?}", triggers);
+            debug!("bootstrap succeeded with triggers: {:?}", triggers);
 
-                    let object: v8::Local<v8::Object> = match triggers.try_into() {
-                        Ok(object) => object,
-                        Err(err) => panic!("failed to convert triggers to object: {:?}", err),
-                    };
+            let object: v8::Local<v8::Object> = triggers
+                .try_into()
+                .map_err(|e| AnyError::msg(format!("Failed to convert triggers to object: {:?}", e)))?;
 
-                    trigger_fetch = crate::util::extract_trigger("fetch", scope, object)
-                        .expect("fetch trigger not found");
-                    trigger_scheduled = crate::util::extract_trigger("scheduled", scope, object)
-                        .expect("scheduled trigger not found");
-                }
-                Err(err) => panic!("bootstrap failed: {:?}", err),
-            }
+            trigger_fetch = crate::util::extract_trigger("fetch", scope, object)
+                .ok_or_else(|| AnyError::msg("Fetch trigger not found in bootstrap response"))?;
+            trigger_scheduled = crate::util::extract_trigger("scheduled", scope, object)
+                .ok_or_else(|| AnyError::msg("Scheduled trigger not found in bootstrap response"))?;
         };
 
         debug!("runtime bootstrapped, evaluating main module...");
@@ -213,12 +209,8 @@ impl Worker {
 
             let mod_id = js_runtime
                 .load_main_es_module_from_code(&specifier, script.code)
-                .await;
-
-            let mod_id = match mod_id {
-                Ok(mod_id) => mod_id,
-                Err(err) => panic!("failed to load main module: {:?}", err),
-            };
+                .await
+                .map_err(|e| AnyError::msg(format!("Failed to load main module: {}", e)))?;
 
             let result = js_runtime.mod_evaluate(mod_id);
 
