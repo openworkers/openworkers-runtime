@@ -113,6 +113,7 @@ pub struct Worker {
     pub(crate) trigger_scheduled: deno_core::v8::Global<deno_core::v8::Function>,
     pub(crate) isolate_handle: v8::IsolateHandle,
     pub(crate) limits: RuntimeLimits,
+    pub(crate) memory_limit_hit_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Worker {
@@ -132,7 +133,11 @@ impl Worker {
 
         // Create custom ArrayBuffer allocator to enforce memory limits on external memory
         // This is critical: V8 heap limits don't cover ArrayBuffers, Uint8Array, etc.
-        let array_buffer_allocator = crate::array_buffer_allocator::CustomAllocator::new(heap_max);
+        let memory_limit_hit_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let array_buffer_allocator = crate::array_buffer_allocator::CustomAllocator::new(
+            heap_max,
+            std::sync::Arc::clone(&memory_limit_hit_flag),
+        );
 
         let mut js_runtime = JsRuntime::new(deno_core::RuntimeOptions {
             is_main: true,
@@ -240,6 +245,7 @@ impl Worker {
             trigger_scheduled,
             isolate_handle,
             limits,
+            memory_limit_hit_flag,
         })
     }
 
@@ -283,11 +289,16 @@ impl Worker {
             cpu_time, self.limits.max_cpu_time_ms, self.limits.max_wall_clock_time_ms
         );
 
+        // Check if memory limit was hit during execution
+        use std::sync::atomic::Ordering;
+        let memory_limit_hit = self.memory_limit_hit_flag.swap(false, Ordering::SeqCst);
+
         // Determine termination reason by inspecting guards, trigger result, and error
         let termination_reason = if let Some(exception_msg) = trigger_exception {
             // Trigger call failed (exception thrown during event dispatch)
             // Check if it's a memory-related exception
-            if exception_msg.contains("Array buffer allocation failed")
+            if memory_limit_hit
+                || exception_msg.contains("Array buffer allocation failed")
                 || exception_msg.contains("RangeError")
                 || exception_msg.contains("out of memory")
             {
@@ -309,6 +320,9 @@ impl Worker {
                 crate::termination::TerminationReason::CpuTimeLimit
             } else if wall_clock_hit {
                 crate::termination::TerminationReason::WallClockTimeout
+            } else if memory_limit_hit {
+                // Memory limit was hit even if not in exception
+                crate::termination::TerminationReason::MemoryLimit
             } else {
                 // Check if it's a memory error by inspecting the error message
                 let error_msg = result

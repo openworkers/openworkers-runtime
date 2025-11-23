@@ -1,6 +1,7 @@
 use deno_core::v8;
 use deno_core::v8::UniqueRef;
 use std::ffi::c_void;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -16,13 +17,15 @@ use std::sync::Arc;
 pub struct CustomAllocator {
     max: usize,
     count: AtomicUsize,
+    memory_limit_hit: Arc<AtomicBool>,
 }
 
 impl CustomAllocator {
-    pub fn new(max_bytes: usize) -> Arc<Self> {
+    pub fn new(max_bytes: usize, memory_limit_hit: Arc<AtomicBool>) -> Arc<Self> {
         Arc::new(Self {
             max: max_bytes,
             count: AtomicUsize::new(0),
+            memory_limit_hit,
         })
     }
 
@@ -55,6 +58,8 @@ unsafe extern "C" fn allocate(allocator: &CustomAllocator, n: usize) -> *mut c_v
             count_loaded / 1024 / 1024,
             allocator.max / 1024 / 1024
         );
+        // Set the flag on the allocator instance to indicate memory limit was hit
+        allocator.memory_limit_hit.store(true, Ordering::SeqCst);
         // Rollback the count since we're not actually allocating
         allocator.count.fetch_sub(n, Ordering::SeqCst);
         return std::ptr::null::<*mut [u8]>() as *mut c_void;
@@ -76,6 +81,8 @@ unsafe extern "C" fn allocate_uninitialized(allocator: &CustomAllocator, n: usiz
             count_loaded / 1024 / 1024,
             allocator.max / 1024 / 1024
         );
+        // Set the flag on the allocator instance to indicate memory limit was hit
+        allocator.memory_limit_hit.store(true, Ordering::SeqCst);
         allocator.count.fetch_sub(n, Ordering::SeqCst);
         return std::ptr::null::<*mut [u8]>() as *mut c_void;
     }
