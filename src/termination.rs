@@ -57,9 +57,9 @@ impl TerminationReason {
         match self {
             Self::Success => 200,
             Self::CpuTimeLimit | Self::MemoryLimit => 429, // Too Many Requests
-            Self::WallClockTimeout => 504, // Gateway Timeout
+            Self::WallClockTimeout => 504,                 // Gateway Timeout
             Self::Exception | Self::InitializationError => 500, // Internal Server Error
-            Self::Terminated => 503, // Service Unavailable
+            Self::Terminated => 503,                       // Service Unavailable
         }
     }
 }

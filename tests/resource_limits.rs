@@ -30,7 +30,10 @@ async fn test_heap_limits_configured() {
 
     println!("✅ Worker created with custom heap limits (1MB-64MB)\n");
 
-    assert!(result.is_ok(), "Worker creation should succeed with custom limits");
+    assert!(
+        result.is_ok(),
+        "Worker creation should succeed with custom limits"
+    );
 }
 
 #[tokio::test]
@@ -113,7 +116,7 @@ async fn test_cpu_intensive_computation_termination() {
     let limits = RuntimeLimits {
         heap_initial_mb: 1,
         heap_max_mb: 128,
-        max_cpu_time_ms: 50,       // 50ms CPU limit (computation would take ~500ms)
+        max_cpu_time_ms: 50, // 50ms CPU limit (computation would take ~500ms)
         max_wall_clock_time_ms: 0, // Disabled - testing CPU enforcement only
     };
 

@@ -3,12 +3,12 @@ use std::path::PathBuf;
 
 const RUNTIME_SNAPSHOT_PATH: &str = env!("RUNTIME_SNAPSHOT_PATH");
 
-fn main () {
+fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/ext/*");
     println!("cargo:rerun-if-changed=src/runtime.rs");
     println!("cargo:rerun-if-changed=src/extensions.rs");
-    
+
     let path = PathBuf::from(RUNTIME_SNAPSHOT_PATH);
 
     // Create the file if it doesn't exist

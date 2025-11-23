@@ -27,14 +27,13 @@ impl CustomAllocator {
     }
 
     pub fn into_v8_allocator(self: Arc<Self>) -> UniqueRef<v8::Allocator> {
-        let vtable: &'static v8::RustAllocatorVtable<CustomAllocator> =
-            &v8::RustAllocatorVtable {
-                allocate,
-                allocate_uninitialized,
-                free,
-                reallocate,
-                drop,
-            };
+        let vtable: &'static v8::RustAllocatorVtable<CustomAllocator> = &v8::RustAllocatorVtable {
+            allocate,
+            allocate_uninitialized,
+            free,
+            reallocate,
+            drop,
+        };
 
         unsafe { v8::new_rust_allocator(Arc::into_raw(self), vtable) }
     }
@@ -67,10 +66,7 @@ unsafe extern "C" fn allocate(allocator: &CustomAllocator, n: usize) -> *mut c_v
 
 #[allow(clippy::unnecessary_cast)]
 #[allow(clippy::uninit_vec)]
-unsafe extern "C" fn allocate_uninitialized(
-    allocator: &CustomAllocator,
-    n: usize,
-) -> *mut c_void {
+unsafe extern "C" fn allocate_uninitialized(allocator: &CustomAllocator, n: usize) -> *mut c_void {
     allocator.count.fetch_add(n, Ordering::SeqCst);
 
     let count_loaded = allocator.count.load(Ordering::SeqCst);

@@ -48,10 +48,7 @@ pub struct FetchInit {
 
 impl FetchInit {
     pub fn new(req: HttpRequest, res_tx: ResponseSender) -> Self {
-        FetchInit {
-            req,
-            res_tx,
-        }
+        FetchInit { req, res_tx }
     }
 }
 
@@ -102,8 +99,8 @@ impl From<HttpRequest> for InnerRequest {
                 .collect(),
             body: match req.body().len() {
                 0 => None,
-                _ => Some(req.body().to_owned())
-            }
+                _ => Some(req.body().to_owned()),
+            },
         }
     }
 }
@@ -112,9 +109,7 @@ deno_core::extension!(
     fetch_event,
     deps = [deno_console, deno_fetch],
     ops = [op_fetch_init, op_fetch_respond],
-    esm = [
-        "ext:event_fetch.js" = "src/ext/event_fetch.js",
-    ]
+    esm = ["ext:event_fetch.js" = "src/ext/event_fetch.js",]
 );
 
 #[op2]
@@ -128,7 +123,7 @@ fn op_fetch_init(state: &mut OpState, #[smi] rid: ResourceId) -> Result<FetchEve
 
     let req = InnerRequest::from(evt.req);
 
-    let rid = state.resource_table.add(FetchTx(evt.res_tx)); 
+    let rid = state.resource_table.add(FetchTx(evt.res_tx));
 
     Ok(FetchEvent { req, rid })
 }

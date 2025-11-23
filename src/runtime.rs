@@ -101,7 +101,7 @@ impl Default for RuntimeLimits {
         Self {
             heap_initial_mb: 1,
             heap_max_mb: 128,
-            max_cpu_time_ms: 50,           // 50ms CPU (anti-DDoS)
+            max_cpu_time_ms: 50,            // 50ms CPU (anti-DDoS)
             max_wall_clock_time_ms: 30_000, // 30s total (anti-hang)
         }
     }
@@ -143,7 +143,7 @@ impl Worker {
             create_params: Some(
                 v8::CreateParams::default()
                     .heap_limits(heap_initial, heap_max)
-                    .array_buffer_allocator(array_buffer_allocator.into_v8_allocator())
+                    .array_buffer_allocator(array_buffer_allocator.into_v8_allocator()),
             ),
             ..Default::default()
         });
@@ -183,7 +183,8 @@ impl Worker {
             );
             let script = deno_core::ModuleCodeString::from(script);
 
-            let triggers = js_runtime.execute_script(deno_core::located_script_name!(), script)
+            let triggers = js_runtime
+                .execute_script(deno_core::located_script_name!(), script)
                 .map_err(|e| AnyError::msg(format!("Bootstrap failed: {}", e)))?;
 
             let scope = &mut js_runtime.handle_scope();
@@ -191,14 +192,16 @@ impl Worker {
 
             debug!("bootstrap succeeded with triggers: {:?}", triggers);
 
-            let object: v8::Local<v8::Object> = triggers
-                .try_into()
-                .map_err(|e| AnyError::msg(format!("Failed to convert triggers to object: {:?}", e)))?;
+            let object: v8::Local<v8::Object> = triggers.try_into().map_err(|e| {
+                AnyError::msg(format!("Failed to convert triggers to object: {:?}", e))
+            })?;
 
             trigger_fetch = crate::util::extract_trigger("fetch", scope, object)
                 .ok_or_else(|| AnyError::msg("Fetch trigger not found in bootstrap response"))?;
             trigger_scheduled = crate::util::extract_trigger("scheduled", scope, object)
-                .ok_or_else(|| AnyError::msg("Scheduled trigger not found in bootstrap response"))?;
+                .ok_or_else(|| {
+                    AnyError::msg("Scheduled trigger not found in bootstrap response")
+                })?;
         };
 
         debug!("runtime bootstrapped, evaluating main module...");
@@ -235,7 +238,10 @@ impl Worker {
         })
     }
 
-    pub async fn exec(&mut self, mut task: Task) -> Result<crate::termination::TerminationReason, CoreError> {
+    pub async fn exec(
+        &mut self,
+        mut task: Task,
+    ) -> Result<crate::termination::TerminationReason, CoreError> {
         debug!("executing task {:?}", task.task_type());
 
         // Start CPU time measurement
@@ -269,9 +275,7 @@ impl Worker {
         let cpu_time = cpu_timer.elapsed();
         debug!(
             "task completed: cpu_time={:?}, cpu_limit={}ms, wall_limit={}ms",
-            cpu_time,
-            self.limits.max_cpu_time_ms,
-            self.limits.max_wall_clock_time_ms
+            cpu_time, self.limits.max_cpu_time_ms, self.limits.max_wall_clock_time_ms
         );
 
         // Determine termination reason by inspecting guards, trigger result, and error
@@ -290,7 +294,10 @@ impl Worker {
             crate::termination::TerminationReason::Success
         } else {
             // Check which limit was exceeded by inspecting the guards
-            let cpu_limit_hit = cpu_enforcer.as_ref().map(|e| e.was_terminated()).unwrap_or(false);
+            let cpu_limit_hit = cpu_enforcer
+                .as_ref()
+                .map(|e| e.was_terminated())
+                .unwrap_or(false);
             let wall_clock_hit = wall_guard.was_triggered();
 
             if cpu_limit_hit {
@@ -299,7 +306,11 @@ impl Worker {
                 crate::termination::TerminationReason::WallClockTimeout
             } else {
                 // Check if it's a memory error by inspecting the error message
-                let error_msg = result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+                let error_msg = result
+                    .as_ref()
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_default();
                 if error_msg.contains("out of memory")
                     || error_msg.contains("Array buffer allocation failed")
                     || error_msg.contains("RangeError")

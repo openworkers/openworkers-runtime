@@ -1,5 +1,5 @@
-use deno_core::OpState;
 use deno_core::serde::Serialize;
+use deno_core::OpState;
 
 deno_core::extension!(
     runtime,
@@ -13,9 +13,7 @@ deno_core::extension!(
     ],
     ops = [op_log],
     esm_entry_point = "ext:runtime.js",
-    esm = [
-        "ext:runtime.js" = "./src/ext/runtime.js",
-    ]
+    esm = ["ext:runtime.js" = "./src/ext/runtime.js",]
 );
 
 #[derive(Debug, Serialize)]
@@ -36,9 +34,9 @@ fn op_log(state: &mut OpState, #[string] level: &str, #[string] message: &str) {
     let tx = state.try_borrow_mut::<std::sync::mpsc::Sender<LogEvent>>();
 
     match tx {
-        None => {},
+        None => {}
         Some(tx) => match tx.send(evt) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => log::error!("failed to send log event"),
         },
     }

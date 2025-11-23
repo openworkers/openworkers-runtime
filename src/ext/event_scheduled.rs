@@ -17,10 +17,7 @@ pub struct ScheduledInit {
 
 impl ScheduledInit {
     pub fn new(res_tx: ResponseSender, time: u64) -> Self {
-        ScheduledInit {
-            res_tx,
-            time,
-        }
+        ScheduledInit { res_tx, time }
     }
 }
 
@@ -40,14 +37,15 @@ deno_core::extension!(
     scheduled_event,
     deps = [deno_console],
     ops = [op_scheduled_init, op_scheduled_respond],
-    esm = [
-        "ext:event_scheduled.js" = "./src/ext/event_scheduled.js",
-    ]
+    esm = ["ext:event_scheduled.js" = "./src/ext/event_scheduled.js",]
 );
 
 #[op2]
 #[serde]
-fn op_scheduled_init(state: &mut OpState, #[smi] rid: ResourceId) -> Result<ScheduledEvent, ResourceError> {
+fn op_scheduled_init(
+    state: &mut OpState,
+    #[smi] rid: ResourceId,
+) -> Result<ScheduledEvent, ResourceError> {
     debug!("op_scheduled_init {rid}");
 
     let evt = state.resource_table.get::<ScheduledInit>(rid).unwrap();

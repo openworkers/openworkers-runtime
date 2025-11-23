@@ -1,8 +1,8 @@
-mod runtime;
-mod permissions;
 mod event_fetch;
 mod event_scheduled;
 mod noop;
+mod permissions;
+mod runtime;
 
 pub use runtime::runtime as runtime_ext;
 pub use runtime::LogEvent;
