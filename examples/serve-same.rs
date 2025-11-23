@@ -128,7 +128,7 @@ async fn main() -> std::io::Result<()> {
                         loop {
                             match task_rx.recv().await {
                                 Some(task) => match worker.exec(task).await {
-                                    Ok(()) => debug!("exec completed"),
+                                    Ok(_reason) => debug!("exec completed"),
                                     Err(err) => error!("exec did not complete: {err}"),
                                 },
                                 None => {

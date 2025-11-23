@@ -58,7 +58,10 @@ impl TimeoutGuard {
                 }
                 // Timeout expired - terminate execution
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    log::warn!("Execution timeout after {}ms, terminating isolate", timeout_ms);
+                    log::warn!(
+                        "Execution timeout after {}ms, terminating isolate",
+                        timeout_ms
+                    );
                     triggered_clone.store(true, Ordering::Relaxed);
                     isolate_handle.terminate_execution();
                 }
@@ -117,6 +120,7 @@ mod tests {
         let guard = TimeoutGuard {
             cancel_tx: None,
             thread_handle: None,
+            triggered: Arc::new(AtomicBool::new(false)),
         };
 
         assert!(guard.cancel_tx.is_none());

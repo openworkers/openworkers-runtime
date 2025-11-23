@@ -58,7 +58,7 @@ async fn handle_request(data: Data<AppState>, req: HttpRequest, body: Bytes) -> 
 
             debug!("exec fetch task");
             match worker.exec(task).await {
-                Ok(()) => debug!("exec completed"),
+                Ok(_reason) => debug!("exec completed"),
                 Err(err) => error!("exec did not complete: {err}"),
             }
         });

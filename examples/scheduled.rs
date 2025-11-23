@@ -33,11 +33,11 @@ async fn main() -> Result<(), ()> {
     };
 
     let (res_tx, res_rx) = oneshot::channel::<()>();
-    let (end_tx, end_rx) =  oneshot::channel::<()>();
+    let (end_tx, end_rx) = oneshot::channel::<()>();
 
     let script = Script {
         code: std::fs::read_to_string(file_path).unwrap(),
-        env: None
+        env: None,
     };
 
     let time = std::time::SystemTime::now()
@@ -55,7 +55,7 @@ async fn main() -> Result<(), ()> {
                 .exec(Task::Scheduled(Some(ScheduledInit::new(res_tx, time))))
                 .await
             {
-                Ok(()) => debug!("exec completed"),
+                Ok(_reason) => debug!("exec completed"),
                 Err(err) => error!("exec did not complete: {err}"),
             }
         });
@@ -66,7 +66,7 @@ async fn main() -> Result<(), ()> {
             .unwrap();
 
         match local.block_on(&rt, async { end_rx.await }) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(err) => error!("failed to wait for end: {err}"),
         }
     });
