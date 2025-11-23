@@ -31,7 +31,6 @@ impl CustomAllocator {
             allocate,
             allocate_uninitialized,
             free,
-            reallocate,
             drop,
         };
 
@@ -90,42 +89,6 @@ unsafe extern "C" fn allocate_uninitialized(allocator: &CustomAllocator, n: usiz
 unsafe extern "C" fn free(allocator: &CustomAllocator, data: *mut c_void, n: usize) {
     allocator.count.fetch_sub(n, Ordering::SeqCst);
     let _ = Box::from_raw(std::slice::from_raw_parts_mut(data as *mut u8, n));
-}
-
-#[allow(clippy::unnecessary_cast)]
-unsafe extern "C" fn reallocate(
-    allocator: &CustomAllocator,
-    prev: *mut c_void,
-    oldlen: usize,
-    newlen: usize,
-) -> *mut c_void {
-    allocator
-        .count
-        .fetch_add(newlen.wrapping_sub(oldlen), Ordering::SeqCst);
-
-    let count_loaded = allocator.count.load(Ordering::SeqCst);
-
-    if count_loaded > allocator.max {
-        log::warn!(
-            "ArrayBuffer reallocation denied: {}MB exceeds limit of {}MB",
-            count_loaded / 1024 / 1024,
-            allocator.max / 1024 / 1024
-        );
-        // Rollback
-        allocator
-            .count
-            .fetch_sub(newlen.wrapping_sub(oldlen), Ordering::SeqCst);
-        return std::ptr::null::<*mut [u8]>() as *mut c_void;
-    }
-
-    let old_store = Box::from_raw(std::slice::from_raw_parts_mut(prev as *mut u8, oldlen));
-    let mut new_store = Vec::with_capacity(newlen);
-    let copy_len = oldlen.min(newlen);
-
-    new_store.extend_from_slice(&old_store[..copy_len]);
-    new_store.resize(newlen, 0u8);
-
-    Box::into_raw(new_store.into_boxed_slice()) as *mut [u8] as *mut c_void
 }
 
 unsafe extern "C" fn drop(allocator: *const CustomAllocator) {

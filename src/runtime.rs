@@ -43,24 +43,24 @@ pub(crate) fn runtime_snapshot() -> Option<&'static [u8]> {
 
 pub(crate) fn extensions(skip_esm: bool) -> Vec<deno_core::Extension> {
     let mut exts = vec![
-        deno_webidl::deno_webidl::init_ops_and_esm(),
-        deno_console::deno_console::init_ops_and_esm(),
-        deno_url::deno_url::init_ops_and_esm(),
-        deno_web::deno_web::init_ops_and_esm::<Permissions>(
+        deno_webidl::deno_webidl::init(),
+        deno_console::deno_console::init(),
+        deno_url::deno_url::init(),
+        deno_web::deno_web::init::<Permissions>(
             std::sync::Arc::new(deno_web::BlobStore::default()),
             None,
         ),
-        deno_crypto::deno_crypto::init_ops_and_esm(None),
-        deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(deno_fetch::Options {
+        deno_crypto::deno_crypto::init(None),
+        deno_fetch::deno_fetch::init::<Permissions>(deno_fetch::Options {
             user_agent: user_agent(),
             ..Default::default()
         }),
         // OpenWorkers extensions
-        noop_ext::init_ops_and_esm(),
-        fetch_event_ext::init_ops_and_esm(),
-        scheduled_event_ext::init_ops_and_esm(),
-        runtime_ext::init_ops_and_esm(),
-        permissions_ext::init_ops(),
+        noop_ext::init(),
+        fetch_event_ext::init(),
+        scheduled_event_ext::init(),
+        runtime_ext::init(),
+        permissions_ext::init(),
     ];
 
     if !skip_esm {
@@ -187,7 +187,12 @@ impl Worker {
                 .execute_script(deno_core::located_script_name!(), script)
                 .map_err(|e| AnyError::msg(format!("Bootstrap failed: {}", e)))?;
 
-            let scope = &mut js_runtime.handle_scope();
+            let context = js_runtime.main_context();
+            let isolate = js_runtime.v8_isolate();
+            v8::scope!(scope, isolate);
+            let context = v8::Local::new(scope, &context);
+            let scope = &mut v8::ContextScope::new(scope, context);
+
             let triggers = v8::Local::new(scope, triggers);
 
             debug!("bootstrap succeeded with triggers: {:?}", triggers);

@@ -14,22 +14,46 @@ impl deno_web::TimersPermission for Permissions {
 }
 
 impl deno_fetch::FetchPermissions for Permissions {
-    fn check_net_url(&mut self, _url: &Url, _api_name: &str) -> Result<(), PermissionCheckError> {
-        println!("TODO check_net_url {}", _url.to_string()); // TODO
-
-        Ok(()) // TODO
+    fn check_net(
+        &mut self,
+        _host: &str,
+        _port: u16,
+        _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+        Ok(()) // TODO: implement proper permission check
     }
 
-    fn check_read<'a>(
-        &mut self,
-        _p: &'a Path,
-        _api_name: &str,
-    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-        println!("TODO check_read {:?}", _p.display()); // TODO
+    fn check_net_url(&mut self, _url: &Url, _api_name: &str) -> Result<(), PermissionCheckError> {
+        Ok(()) // TODO: implement proper permission check
+    }
 
+    fn check_open<'a>(
+        &mut self,
+        path: Cow<'a, Path>,
+        _open_access: deno_permissions::OpenAccessKind,
+        _api_name: &str,
+    ) -> Result<deno_permissions::CheckedPath<'a>, PermissionCheckError> {
+        // Deny file access by default
         Err(PermissionCheckError::PermissionDenied(
-            PermissionDeniedError::Fatal {
-                access: "Not allowed".to_string(),
+            PermissionDeniedError {
+                access: format!("File access not allowed: {:?}", path.display()),
+                name: "read",
+                custom_message: None,
+            },
+        ))
+    }
+
+    fn check_net_vsock(
+        &mut self,
+        _cid: u32,
+        _port: u32,
+        _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+        Err(PermissionCheckError::PermissionDenied(
+            PermissionDeniedError {
+                access: "VSOCK access not allowed".to_string(),
+                name: "net",
+                custom_message: None,
             },
         ))
     }

@@ -35,7 +35,7 @@ struct ScheduledEvent {
 
 deno_core::extension!(
     scheduled_event,
-    deps = [deno_console],
+    deps = [deno_web],
     ops = [op_scheduled_init, op_scheduled_respond],
     esm = ["ext:event_scheduled.js" = "./src/ext/event_scheduled.js",]
 );

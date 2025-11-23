@@ -107,7 +107,7 @@ impl From<HttpRequest> for InnerRequest {
 
 deno_core::extension!(
     fetch_event,
-    deps = [deno_console, deno_fetch],
+    deps = [deno_web, deno_fetch],
     ops = [op_fetch_init, op_fetch_respond],
     esm = ["ext:event_fetch.js" = "src/ext/event_fetch.js",]
 );

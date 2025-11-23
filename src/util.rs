@@ -3,10 +3,10 @@ use deno_core::v8;
 use crate::Task;
 use crate::Worker;
 
-pub(crate) fn extract_trigger<'a>(
+pub(crate) fn extract_trigger(
     name: &str,
-    scope: &mut v8::HandleScope<'a>,
-    object: v8::Local<'a, v8::Object>,
+    scope: &v8::PinnedRef<v8::HandleScope>,
+    object: v8::Local<v8::Object>,
 ) -> Option<v8::Global<v8::Function>> {
     let key = v8::String::new(scope, name).unwrap().into();
 
@@ -20,7 +20,7 @@ pub(crate) fn extract_trigger<'a>(
         Err(_) => return None,
     };
 
-    Some(v8::Global::new(scope, ret))
+    Some(v8::Global::new(scope.as_ref(), ret))
 }
 
 /// Execute a task and return the exception message if one occurred
@@ -35,7 +35,11 @@ pub(crate) fn exec_task(worker: &mut Worker, task: &mut Task) -> Option<String> 
         }
     };
 
-    let scope = &mut worker.js_runtime.handle_scope();
+    let context = worker.js_runtime.main_context();
+    let isolate = worker.js_runtime.v8_isolate();
+    v8::scope!(scope, isolate);
+    let context = v8::Local::new(scope, &context);
+    let scope = &mut v8::ContextScope::new(scope, context);
 
     let trigger = v8::Local::new(
         scope,
@@ -46,29 +50,17 @@ pub(crate) fn exec_task(worker: &mut Worker, task: &mut Task) -> Option<String> 
     );
 
     let recv = v8::undefined(scope);
-
     let rid = v8::Integer::new(scope, rid as i32).into();
 
-    // Use TryCatch to capture exception details
-    let mut try_catch = v8::TryCatch::new(scope);
-
-    match trigger.call(&mut try_catch, recv.into(), &[rid]) {
+    // Call the trigger directly and check if it returns None (exception)
+    match trigger.call(scope, recv.into(), &[rid]) {
         Some(_) => {
             log::debug!("successfully called trigger");
             None
         }
         None => {
-            // Get the exception message from TryCatch
-            let exception_str = if try_catch.has_caught() {
-                try_catch
-                    .exception()
-                    .and_then(|ex| ex.to_string(&mut try_catch))
-                    .map(|s| s.to_rust_string_lossy(&mut try_catch))
-                    .unwrap_or_else(|| "Unknown exception".to_string())
-            } else {
-                "Unknown exception".to_string()
-            };
-
+            // An exception occurred during the call
+            let exception_str = "Exception occurred during trigger call".to_string();
             log::error!("failed to call trigger: {}", exception_str);
             Some(exception_str)
         }

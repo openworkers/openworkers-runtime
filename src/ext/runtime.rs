@@ -4,7 +4,6 @@ use deno_core::OpState;
 deno_core::extension!(
     runtime,
     deps = [
-        deno_console,
         deno_web,
         deno_crypto,
         deno_fetch,

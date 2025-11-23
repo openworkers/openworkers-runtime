@@ -1,15 +1,18 @@
 {
   "cSpell.words": [
     "actix",
+    "codegen",
     "codespaces",
     "customizer",
     "deno",
     "hrtime",
+    "libc",
     "macrotask",
     "oneshot",
     "openworkers",
     "primordials",
     "reqwest",
+    "serde",
     "webidl"
   ],
   "rust-analyzer.checkOnSave": true,
