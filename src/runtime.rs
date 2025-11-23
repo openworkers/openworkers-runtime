@@ -122,6 +122,17 @@ impl Worker {
         log_tx: Option<std::sync::mpsc::Sender<LogEvent>>,
         limits: Option<RuntimeLimits>,
     ) -> Result<Self, AnyError> {
+        // Initialize rustls CryptoProvider (required for rustls 0.23+)
+        // This is needed for HTTPS fetch requests from workers
+        // We use a once_cell to ensure it's only initialized once
+        static CRYPTO_INIT: std::sync::Once = std::sync::Once::new();
+        CRYPTO_INIT.call_once(|| {
+            // Install the default provider (ring-based crypto)
+            // Ignore error if already installed (can happen in tests)
+            let _ = rustls::crypto::ring::default_provider()
+                .install_default();
+        });
+
         let startup_snapshot = runtime_snapshot();
         let snapshot_is_some = startup_snapshot.is_some();
 
