@@ -4,8 +4,8 @@ mod noop;
 mod permissions;
 mod runtime;
 
-pub use runtime::LogEvent;
 pub use runtime::runtime as runtime_ext;
+pub use runtime::{LogEvent, LogLevel};
 
 pub use event_fetch::FetchInit;
 pub use event_fetch::fetch_event as fetch_event_ext;

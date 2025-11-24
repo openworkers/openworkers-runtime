@@ -15,16 +15,56 @@ deno_core::extension!(
     esm = ["ext:runtime.js" = "./src/ext/runtime.js",]
 );
 
+/// Log level for console output
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Log,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    /// Parse log level from string
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "error" => LogLevel::Error,
+            "warn" => LogLevel::Warn,
+            "info" => LogLevel::Info,
+            "log" => LogLevel::Log,
+            "debug" => LogLevel::Debug,
+            "trace" => LogLevel::Trace,
+            _ => LogLevel::Info, // Default to Info for unknown levels
+        }
+    }
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Error => write!(f, "ERROR"),
+            LogLevel::Warn => write!(f, "WARN"),
+            LogLevel::Info => write!(f, "INFO"),
+            LogLevel::Log => write!(f, "LOG"),
+            LogLevel::Debug => write!(f, "DEBUG"),
+            LogLevel::Trace => write!(f, "TRACE"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct LogEvent {
-    pub level: String,
+    pub level: LogLevel,
     pub message: String,
 }
 
 #[deno_core::op2(fast)]
 fn op_log(state: &mut OpState, #[string] level: &str, #[string] message: &str) {
     let evt = LogEvent {
-        level: level.to_string(),
+        level: LogLevel::from_str(level),
         message: message.to_string(),
     };
 
