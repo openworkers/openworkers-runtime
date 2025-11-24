@@ -1,10 +1,10 @@
 use deno_core::v8;
 use deno_core::v8::UniqueRef;
 use std::ffi::c_void;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 /// Custom ArrayBuffer allocator that tracks and limits external memory
 ///
@@ -88,16 +88,22 @@ unsafe extern "C" fn allocate_uninitialized(allocator: &CustomAllocator, n: usiz
     }
 
     let mut store = Vec::with_capacity(n);
-    store.set_len(n);
+    unsafe {
+        store.set_len(n);
+    }
 
     Box::into_raw(store.into_boxed_slice()) as *mut [u8] as *mut c_void
 }
 
 unsafe extern "C" fn free(allocator: &CustomAllocator, data: *mut c_void, n: usize) {
     allocator.count.fetch_sub(n, Ordering::SeqCst);
-    let _ = Box::from_raw(std::slice::from_raw_parts_mut(data as *mut u8, n));
+    unsafe {
+        let _ = Box::from_raw(std::slice::from_raw_parts_mut(data as *mut u8, n));
+    }
 }
 
 unsafe extern "C" fn drop(allocator: *const CustomAllocator) {
-    Arc::from_raw(allocator);
+    unsafe {
+        Arc::from_raw(allocator);
+    }
 }

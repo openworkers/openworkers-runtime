@@ -1,22 +1,22 @@
+use crate::LogEvent;
+use crate::Task;
 use crate::env::ToJsonString;
+use crate::ext::Permissions;
 use crate::ext::fetch_event_ext;
 use crate::ext::noop_ext;
 use crate::ext::permissions_ext;
 use crate::ext::runtime_ext;
 use crate::ext::scheduled_event_ext;
-use crate::ext::Permissions;
 use crate::timeout::TimeoutGuard;
-use crate::LogEvent;
-use crate::Task;
 
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use deno_core::JsRuntime;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::JsRuntime;
 
 use log::debug;
 

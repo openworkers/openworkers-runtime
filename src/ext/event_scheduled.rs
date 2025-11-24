@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
+use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::serde::Serialize;
-use deno_core::OpState;
-use deno_core::ResourceId;
 use log::debug;
 
 type ResponseSender = tokio::sync::oneshot::Sender<()>;

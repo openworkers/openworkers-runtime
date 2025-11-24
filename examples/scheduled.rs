@@ -14,10 +14,6 @@ fn get_path() -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
-    if !std::env::var("RUST_LOG").is_ok() {
-        std::env::set_var("RUST_LOG", "debug");
-    }
-
     env_logger::init();
 
     debug!("start main");

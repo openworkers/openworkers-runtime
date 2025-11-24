@@ -5,10 +5,10 @@ use openworkers_runtime::{FetchInit, HttpRequest, HttpResponse, Script, Task, Wo
 
 use tokio::sync::oneshot::channel;
 
-use actix_web::web;
-use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use actix_web::web;
+use actix_web::web::Data;
 
 struct AppState {
     code: String,
@@ -97,10 +97,6 @@ fn get_code() -> String {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    if !std::env::var("RUST_LOG").is_ok() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-
     env_logger::init();
 
     debug!("start main");

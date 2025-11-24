@@ -1,5 +1,5 @@
-use deno_core::serde::Serialize;
 use deno_core::OpState;
+use deno_core::serde::Serialize;
 
 deno_core::extension!(
     runtime,

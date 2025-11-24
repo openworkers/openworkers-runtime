@@ -5,7 +5,7 @@ use openworkers_runtime::{FetchInit, HttpRequest, HttpResponse, Script, Task, Wo
 
 use tokio::sync::oneshot::channel;
 
-use actix_web::{web, web::Data, App, HttpServer};
+use actix_web::{App, HttpServer, web, web::Data};
 
 struct AppState {
     task_tx: tokio::sync::mpsc::Sender<Task>,
@@ -48,7 +48,10 @@ async fn handle_request(
             res.into()
         }
         Err(err) => {
-            error!("worker fetch error: {}, ensure the worker registered a listener for the 'fetch' event", err);
+            error!(
+                "worker fetch error: {}, ensure the worker registered a listener for the 'fetch' event",
+                err
+            );
             actix_web::HttpResponse::InternalServerError().body(err.to_string())
         }
     };
@@ -70,10 +73,6 @@ fn get_code() -> String {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    if !std::env::var("RUST_LOG").is_ok() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-
     env_logger::init();
 
     debug!("start main");

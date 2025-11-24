@@ -1,7 +1,7 @@
 use deno_core::error::CoreError;
-use deno_core::snapshot::create_snapshot;
 use deno_core::snapshot::CreateSnapshotOptions;
 use deno_core::snapshot::CreateSnapshotOutput;
+use deno_core::snapshot::create_snapshot;
 
 use crate::extensions;
 
