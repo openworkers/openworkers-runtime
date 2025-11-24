@@ -1,4 +1,4 @@
-use openworkers_runtime::{RuntimeLimits, Script, Task, Worker};
+use openworkers_runtime::{HttpRequest, RuntimeLimits, Script, Task, Worker};
 use std::time::Duration;
 
 #[tokio::test]
@@ -63,10 +63,12 @@ async fn test_normal_execution_works() {
 
     // Create a dummy fetch task
     let (res_tx, res_rx) = tokio::sync::oneshot::channel();
-    let req = http_v02::Request::builder()
-        .uri("http://localhost/")
-        .body(bytes::Bytes::new())
-        .unwrap();
+    let req = HttpRequest {
+        method: "GET".to_string(),
+        url: "http://localhost/".to_string(),
+        headers: Default::default(),
+        body: None,
+    };
 
     let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
 
@@ -82,7 +84,7 @@ async fn test_normal_execution_works() {
 
     // Check response
     let response = res_rx.await.unwrap();
-    assert_eq!(response.status(), 200);
+    assert_eq!(response.status, 200);
 }
 
 #[tokio::test]
@@ -125,10 +127,12 @@ async fn test_cpu_intensive_computation_termination() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
-    let req = http_v02::Request::builder()
-        .uri("http://localhost/")
-        .body(bytes::Bytes::new())
-        .unwrap();
+    let req = HttpRequest {
+        method: "GET".to_string(),
+        url: "http://localhost/".to_string(),
+        headers: Default::default(),
+        body: None,
+    };
 
     let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
 
@@ -197,10 +201,12 @@ async fn test_cpu_time_ignores_sleep() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
-    let req = http_v02::Request::builder()
-        .uri("http://localhost/")
-        .body(bytes::Bytes::new())
-        .unwrap();
+    let req = HttpRequest {
+        method: "GET".to_string(),
+        url: "http://localhost/".to_string(),
+        headers: Default::default(),
+        body: None,
+    };
 
     let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
 
@@ -219,7 +225,7 @@ async fn test_cpu_time_ignores_sleep() {
 
     // Check response
     let response = _res_rx.await.unwrap();
-    assert_eq!(response.status(), 200);
+    assert_eq!(response.status, 200);
 
     #[cfg(target_os = "linux")]
     println!("✅ Linux: CPU enforcement worked, sleep ignored");

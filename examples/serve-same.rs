@@ -1,26 +1,21 @@
 use bytes::Bytes;
 
-use log::debug;
-use log::error;
-use openworkers_runtime::FetchInit;
-use openworkers_runtime::Script;
-use openworkers_runtime::Task;
-use openworkers_runtime::Worker;
+use log::{debug, error};
+use openworkers_runtime::{FetchInit, HttpRequest, HttpResponse, Script, Task, Worker};
 
 use tokio::sync::oneshot::channel;
 
-use actix_web::{App, HttpServer};
-
-use actix_web::web;
-use actix_web::web::Data;
-use actix_web::HttpRequest;
-use actix_web::HttpResponse;
+use actix_web::{web, web::Data, App, HttpServer};
 
 struct AppState {
     task_tx: tokio::sync::mpsc::Sender<Task>,
 }
 
-async fn handle_request(data: Data<AppState>, req: HttpRequest, body: Bytes) -> HttpResponse {
+async fn handle_request(
+    data: Data<AppState>,
+    req: actix_web::HttpRequest,
+    body: Bytes,
+) -> actix_web::HttpResponse {
     debug!(
         "handle_request: {} {} in thread {:?}",
         req.method(),
@@ -30,18 +25,10 @@ async fn handle_request(data: Data<AppState>, req: HttpRequest, body: Bytes) -> 
 
     let start = tokio::time::Instant::now();
 
-    let (res_tx, res_rx) = channel::<http_v02::Response<Bytes>>();
+    let (res_tx, res_rx) = channel::<HttpResponse>();
 
-    let req = http_v02::Request::builder()
-        .uri(format!(
-            "{}://{}{}",
-            req.connection_info().scheme(),
-            req.connection_info().host(),
-            req.uri()
-        ))
-        .method(req.method())
-        .body(body)
-        .unwrap();
+    // Convert actix request to our HttpRequest type
+    let req = HttpRequest::from_actix(&req, body);
 
     match data
         .task_tx
@@ -51,25 +38,18 @@ async fn handle_request(data: Data<AppState>, req: HttpRequest, body: Bytes) -> 
         Ok(()) => debug!("fetch task sent"),
         Err(err) => {
             error!("failed to send fetch task: {}", err);
-            return HttpResponse::InternalServerError().body(err.to_string());
+            return actix_web::HttpResponse::InternalServerError().body(err.to_string());
         }
     }
 
-    let response = {
-        match res_rx.await {
-            Ok(res) => {
-                let mut rb = HttpResponse::build(res.status());
-
-                for (k, v) in res.headers() {
-                    rb.append_header((k, v));
-                }
-
-                rb.body(res.body().clone())
-            }
-            Err(err) => {
-                error!("worker fetch error: {}, ensure the worker registered a listener for the 'fetch' event", err);
-                HttpResponse::InternalServerError().body(err.to_string())
-            }
+    let response = match res_rx.await {
+        Ok(res) => {
+            // Convert our HttpResponse to actix_web::HttpResponse
+            res.into()
+        }
+        Err(err) => {
+            error!("worker fetch error: {}, ensure the worker registered a listener for the 'fetch' event", err);
+            actix_web::HttpResponse::InternalServerError().body(err.to_string())
         }
     };
 

@@ -9,8 +9,9 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use log::debug;
 
-type HttpRequest = http_v02::Request<Bytes>;
-type HttpResponse = http_v02::Response<Bytes>;
+// Use our shared types
+type HttpRequest = crate::HttpRequest;
+type HttpResponse = crate::HttpResponse;
 type ResponseSender = tokio::sync::oneshot::Sender<HttpResponse>;
 
 /// FetchResponse is a struct that represents the response
@@ -25,29 +26,24 @@ pub struct FetchResponse {
     body: Option<Bytes>,
 }
 
-impl Into<HttpResponse> for FetchResponse {
-    fn into(self) -> HttpResponse {
-        let mut builder = http_v02::Response::builder().status(self.status);
-
-        for (k, v) in self.headers {
-            builder = builder.header(k, v);
-        }
-
-        match self.body {
-            Some(body) => builder.body(body).unwrap(),
-            None => builder.body(Default::default()).unwrap(),
+impl Into<crate::HttpResponse> for FetchResponse {
+    fn into(self) -> crate::HttpResponse {
+        crate::HttpResponse {
+            status: self.status,
+            headers: self.headers,
+            body: self.body,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct FetchInit {
-    pub(crate) req: HttpRequest,
+    pub(crate) req: crate::HttpRequest,
     pub(crate) res_tx: ResponseSender,
 }
 
 impl FetchInit {
-    pub fn new(req: HttpRequest, res_tx: ResponseSender) -> Self {
+    pub fn new(req: crate::HttpRequest, res_tx: ResponseSender) -> Self {
         FetchInit { req, res_tx }
     }
 }
@@ -90,17 +86,10 @@ struct FetchEvent {
 impl From<HttpRequest> for InnerRequest {
     fn from(req: HttpRequest) -> Self {
         InnerRequest {
-            method: req.method().to_string(),
-            url: req.uri().to_string(),
-            headers: req
-                .headers()
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_str().unwrap().to_string()))
-                .collect(),
-            body: match req.body().len() {
-                0 => None,
-                _ => Some(req.body().to_owned()),
-            },
+            method: req.method,
+            url: req.url,
+            headers: req.headers.into_iter().collect(),
+            body: req.body,
         }
     }
 }

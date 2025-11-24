@@ -129,8 +129,7 @@ impl Worker {
         CRYPTO_INIT.call_once(|| {
             // Install the default provider (ring-based crypto)
             // Ignore error if already installed (can happen in tests)
-            let _ = rustls::crypto::ring::default_provider()
-                .install_default();
+            let _ = rustls::crypto::ring::default_provider().install_default();
         });
 
         let startup_snapshot = runtime_snapshot();
