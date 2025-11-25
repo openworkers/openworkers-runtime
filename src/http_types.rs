@@ -93,7 +93,6 @@ impl HttpRequest {
 impl From<HttpResponse> for actix_web::HttpResponse {
     fn from(res: HttpResponse) -> Self {
         use actix_web::body::BodyStream;
-        use futures::StreamExt;
         use tokio_stream::wrappers::ReceiverStream;
 
         let mut builder = actix_web::HttpResponse::build(
@@ -115,6 +114,8 @@ impl From<HttpResponse> for actix_web::HttpResponse {
                 }
             }
             ResponseBody::Stream(rx) => {
+                use tokio_stream::StreamExt;
+
                 let stream = ReceiverStream::new(rx).map(|result| {
                     result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
                 });
