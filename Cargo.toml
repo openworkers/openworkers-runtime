@@ -1,6 +1,6 @@
 [package]
 name = "openworkers-runtime"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -27,6 +27,7 @@ tokio = { version = "1.43.0", features = ["full"] }
 libc = "0.2"
 once_cell = "1.21.3"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+tokio-stream = "0.1"
 
 # Optional dependencies for examples
 actix-web = { version = "4.12.0", features = ["macros"], optional = true }

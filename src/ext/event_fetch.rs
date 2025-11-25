@@ -31,7 +31,10 @@ impl Into<crate::HttpResponse> for FetchResponse {
         crate::HttpResponse {
             status: self.status,
             headers: self.headers,
-            body: self.body,
+            body: match self.body {
+                Some(bytes) => crate::ResponseBody::Bytes(bytes),
+                None => crate::ResponseBody::None,
+            },
         }
     }
 }

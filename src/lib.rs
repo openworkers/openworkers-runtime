@@ -17,7 +17,7 @@ pub(crate) use runtime::extensions;
 
 pub use deno_core::error::AnyError;
 pub use ext::{FetchInit, LogEvent, LogLevel, ScheduledInit};
-pub use http_types::{HttpRequest, HttpResponse};
+pub use http_types::{HttpRequest, HttpResponse, ResponseBody};
 pub use runtime::RuntimeLimits;
 pub use runtime::Script;
 pub use runtime::Worker;
