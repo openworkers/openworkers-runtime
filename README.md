@@ -22,23 +22,23 @@ cargo run --example benchmark --release
 ### Results (Apple Silicon, Release Mode)
 
 ```
-Worker::new(): avg=21.9ms, min=15.3ms, max=36.6ms
-exec():        avg=774µs, min=600µs, max=1.2ms
-Total:         avg=22.7ms, min=15.9ms, max=37.9ms
+Worker::new(): avg=7.4ms, min=4.6ms, max=17.1ms
+exec():        avg=1.5ms, min=1.07ms, max=2.7ms
+Total:         avg=9ms, min=5.8ms, max=20ms
 ```
 
 ### Runtime Comparison
 
 | Runtime | Engine | Worker::new() | exec() | Total | Language |
 |---------|--------|---------------|--------|-------|----------|
-| **[V8](https://github.com/openworkers/openworkers-runtime-v8)** | V8 | 1.9ms | **96µs** ⚡ | 2.0ms | Rust + C++ |
-| **[JSC](https://github.com/openworkers/openworkers-runtime-jsc)** | JavaScriptCore | 0.5ms* | 400µs | **0.9ms** 🏆 | Rust + C |
-| **[Boa](https://github.com/openworkers/openworkers-runtime-boa)** | Boa | 1.1ms | 610µs | 1.7ms | 100% Rust |
-| **[Deno](https://github.com/openworkers/openworkers-runtime)** | V8 + Deno | **21.9ms** | 774µs | 22.7ms | Rust + C++ |
+| **[V8](https://github.com/openworkers/openworkers-runtime-v8)** | V8 | 2.9ms | **15µs** ⚡ | ~3ms | Rust + C++ |
+| **[JSC](https://github.com/openworkers/openworkers-runtime-jsc)** | JavaScriptCore | 495µs* | 434µs | **935µs** 🏆 | Rust + C |
+| **[Boa](https://github.com/openworkers/openworkers-runtime-boa)** | Boa | 605µs | 441µs | 1.05ms | **100% Rust** |
+| **[Deno](https://github.com/openworkers/openworkers-runtime)** | V8 + Deno | 4.6ms | 1.07ms | 5.8ms | Rust + C++ |
 
-*JSC has ~41ms warmup on first run, then stabilizes
+*JSC has ~40ms warmup on first run, then stabilizes
 
-**Deno provides the most complete Web API compatibility** at the cost of slower initialization.
+**Deno provides the most complete Web API compatibility** with rich Deno extensions.
 
 ## Installation
 
