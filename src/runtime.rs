@@ -7,7 +7,7 @@ use crate::ext::noop_ext;
 use crate::ext::permissions_ext;
 use crate::ext::runtime_ext;
 use crate::ext::scheduled_event_ext;
-use crate::timeout::TimeoutGuard;
+use crate::security::{CpuEnforcer, CpuTimer, CustomAllocator, TimeoutGuard};
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -162,10 +162,8 @@ impl Worker {
         // Create custom ArrayBuffer allocator to enforce memory limits on external memory
         // This is critical: V8 heap limits don't cover ArrayBuffers, Uint8Array, etc.
         let memory_limit_hit_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let array_buffer_allocator = crate::array_buffer_allocator::CustomAllocator::new(
-            heap_max,
-            std::sync::Arc::clone(&memory_limit_hit_flag),
-        );
+        let array_buffer_allocator =
+            CustomAllocator::new(heap_max, std::sync::Arc::clone(&memory_limit_hit_flag));
 
         let mut js_runtime = JsRuntime::new(deno_core::RuntimeOptions {
             is_main: true,
@@ -284,16 +282,14 @@ impl Worker {
         debug!("executing task {:?}", task.task_type());
 
         // Start CPU time measurement
-        let cpu_timer = crate::cpu_timer::CpuTimer::start();
+        let cpu_timer = CpuTimer::start();
 
         // Enforce BOTH CPU and wall-clock limits simultaneously
         // Whichever limit is hit first will terminate execution
 
         // 1. CPU time enforcement (Linux-only, via POSIX timer + SIGALRM)
-        let cpu_enforcer = crate::cpu_enforcement::CpuEnforcer::new(
-            self.isolate_handle.clone(),
-            self.limits.max_cpu_time_ms,
-        );
+        let cpu_enforcer =
+            CpuEnforcer::new(self.isolate_handle.clone(), self.limits.max_cpu_time_ms);
 
         // 2. Wall-clock enforcement (all platforms, via watchdog thread)
         let wall_guard = TimeoutGuard::new(
