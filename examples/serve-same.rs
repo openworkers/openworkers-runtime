@@ -1,11 +1,11 @@
 use bytes::Bytes;
-
 use log::{debug, error};
-use openworkers_runtime::{FetchInit, HttpRequest, HttpResponse, Script, Task, Worker};
-
+use openworkers_core::{FetchInit, HttpRequest, HttpResponse, Script, Task};
+use openworkers_runtime_deno::Worker;
 use tokio::sync::oneshot::channel;
 
-use actix_web::{App, HttpServer, web, web::Data};
+use actix_web::web::Data;
+use actix_web::{App, HttpServer, web};
 
 struct AppState {
     task_tx: tokio::sync::mpsc::Sender<Task>,
@@ -91,10 +91,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new({
-                let script = Script {
-                    code: get_code(),
-                    env: None,
-                };
+                let script = Script::new(get_code());
 
                 let (task_tx, mut task_rx) = tokio::sync::mpsc::channel(1);
 
@@ -107,7 +104,7 @@ async fn main() -> std::io::Result<()> {
                         loop {
                             match task_rx.recv().await {
                                 Some(task) => match worker.exec(task).await {
-                                    Ok(_reason) => debug!("exec completed"),
+                                    Ok(()) => debug!("exec completed"),
                                     Err(err) => error!("exec did not complete: {err}"),
                                 },
                                 None => {

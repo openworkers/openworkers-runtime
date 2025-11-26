@@ -1,4 +1,5 @@
-use openworkers_runtime::{HttpRequest, RuntimeLimits, Script, Task, Worker};
+use openworkers_core::{HttpRequest, RuntimeLimits, Script, Task};
+use openworkers_runtime_deno::Worker;
 use std::time::Duration;
 
 #[tokio::test]
@@ -11,10 +12,7 @@ async fn test_heap_limits_configured() {
         });
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let limits = RuntimeLimits {
         heap_initial_mb: 1,
@@ -51,18 +49,14 @@ async fn test_normal_execution_works() {
         }
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     println!("\n🧪 Testing normal execution (should succeed)...\n");
 
     // Create worker with default limits
     let mut worker = Worker::new(script, None, None).await.unwrap();
 
-    // Create a dummy fetch task
-    let (res_tx, res_rx) = tokio::sync::oneshot::channel();
+    // Create a fetch task
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -70,7 +64,7 @@ async fn test_normal_execution_works() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
+    let (task, rx) = Task::fetch(req);
 
     // Execute with timeout
     let timeout = Duration::from_millis(50);
@@ -83,7 +77,7 @@ async fn test_normal_execution_works() {
     assert!(result.unwrap().is_ok(), "Worker should not error");
 
     // Check response
-    let response = res_rx.await.unwrap();
+    let response = rx.await.unwrap();
     assert_eq!(response.status, 200);
 }
 
@@ -110,10 +104,7 @@ async fn test_cpu_intensive_computation_termination() {
         }
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let limits = RuntimeLimits {
         heap_initial_mb: 1,
@@ -126,7 +117,6 @@ async fn test_cpu_intensive_computation_termination() {
 
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-    let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -134,7 +124,7 @@ async fn test_cpu_intensive_computation_termination() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
+    let (task, _rx) = Task::fetch(req);
 
     let start = std::time::Instant::now();
     let _result = worker.exec(task).await;
@@ -184,10 +174,7 @@ async fn test_cpu_time_ignores_sleep() {
         }
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let limits = RuntimeLimits {
         heap_initial_mb: 1,
@@ -200,7 +187,6 @@ async fn test_cpu_time_ignores_sleep() {
 
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-    let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -208,7 +194,7 @@ async fn test_cpu_time_ignores_sleep() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
+    let (task, rx) = Task::fetch(req);
 
     // Execute
     let result = worker.exec(task).await;
@@ -224,7 +210,7 @@ async fn test_cpu_time_ignores_sleep() {
     );
 
     // Check response
-    let response = _res_rx.await.unwrap();
+    let response = rx.await.unwrap();
     assert_eq!(response.status, 200);
 
     #[cfg(target_os = "linux")]

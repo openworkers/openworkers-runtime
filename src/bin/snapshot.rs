@@ -1,4 +1,4 @@
-use openworkers_runtime::snapshot::create_runtime_snapshot;
+use openworkers_runtime_deno::snapshot::create_runtime_snapshot;
 
 use std::env;
 use std::fs::File;

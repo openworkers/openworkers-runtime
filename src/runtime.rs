@@ -1,5 +1,7 @@
 use crate::LogEvent;
+use crate::LogSender;
 use crate::Task;
+use crate::TerminationReason;
 use crate::env::ToJsonString;
 use crate::ext::Permissions;
 use crate::ext::fetch_event_ext;
@@ -9,11 +11,11 @@ use crate::ext::runtime_ext;
 use crate::ext::scheduled_event_ext;
 use crate::security::{CpuEnforcer, CpuTimer, CustomAllocator, TimeoutGuard};
 
-use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use deno_core::JsRuntime;
-use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::v8;
 
@@ -75,54 +77,8 @@ pub(crate) fn extensions(skip_esm: bool) -> Vec<deno_core::Extension> {
     exts
 }
 
-pub struct Script {
-    pub code: String,
-    pub env: Option<HashMap<String, String>>,
-}
-
-impl Script {
-    /// Create a new script with code only
-    pub fn new(code: impl Into<String>) -> Self {
-        Self {
-            code: code.into(),
-            env: None,
-        }
-    }
-
-    /// Create a new script with code and environment variables
-    pub fn with_env(code: impl Into<String>, env: HashMap<String, String>) -> Self {
-        Self {
-            code: code.into(),
-            env: Some(env),
-        }
-    }
-}
-
-/// V8 runtime resource limits configuration
-#[derive(Debug, Clone)]
-pub struct RuntimeLimits {
-    /// Initial V8 heap size in MB (default: 1MB)
-    pub heap_initial_mb: usize,
-    /// Maximum V8 heap size in MB (default: 128MB)
-    pub heap_max_mb: usize,
-    /// Maximum CPU time in milliseconds (default: 50ms, 0 = disabled)
-    /// Only actual computation counts, sleeps/I/O don't count. Linux-only enforcement.
-    pub max_cpu_time_ms: u64,
-    /// Maximum wall-clock time in milliseconds (default: 30s, 0 = disabled)
-    /// Total elapsed time including I/O. Prevents hanging on slow external APIs.
-    pub max_wall_clock_time_ms: u64,
-}
-
-impl Default for RuntimeLimits {
-    fn default() -> Self {
-        Self {
-            heap_initial_mb: 1,
-            heap_max_mb: 128,
-            max_cpu_time_ms: 50,            // 50ms CPU (anti-DDoS)
-            max_wall_clock_time_ms: 30_000, // 30s total (anti-hang)
-        }
-    }
-}
+use crate::RuntimeLimits;
+use crate::Script;
 
 pub struct Worker {
     pub(crate) js_runtime: deno_core::JsRuntime,
@@ -130,15 +86,16 @@ pub struct Worker {
     pub(crate) trigger_scheduled: deno_core::v8::Global<deno_core::v8::Function>,
     pub(crate) isolate_handle: v8::IsolateHandle,
     pub(crate) limits: RuntimeLimits,
-    pub(crate) memory_limit_hit_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) memory_limit_hit_flag: Arc<AtomicBool>,
+    aborted: Arc<AtomicBool>,
 }
 
 impl Worker {
     pub async fn new(
         script: Script,
-        log_tx: Option<std::sync::mpsc::Sender<LogEvent>>,
+        log_tx: Option<LogSender>,
         limits: Option<RuntimeLimits>,
-    ) -> Result<Self, AnyError> {
+    ) -> Result<Self, TerminationReason> {
         // Initialize rustls CryptoProvider (required for rustls 0.23+)
         // This is needed for HTTPS fetch requests from workers
         // We use a once_cell to ensure it's only initialized once
@@ -160,9 +117,9 @@ impl Worker {
 
         // Create custom ArrayBuffer allocator to enforce memory limits on external memory
         // This is critical: V8 heap limits don't cover ArrayBuffers, Uint8Array, etc.
-        let memory_limit_hit_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let memory_limit_hit_flag = Arc::new(AtomicBool::new(false));
         let array_buffer_allocator =
-            CustomAllocator::new(heap_max, std::sync::Arc::clone(&memory_limit_hit_flag));
+            CustomAllocator::new(heap_max, Arc::clone(&memory_limit_hit_flag));
 
         let mut js_runtime = JsRuntime::new(deno_core::RuntimeOptions {
             is_main: true,
@@ -215,7 +172,9 @@ impl Worker {
 
             let triggers = js_runtime
                 .execute_script(deno_core::located_script_name!(), script)
-                .map_err(|e| AnyError::msg(format!("Bootstrap failed: {}", e)))?;
+                .map_err(|e| {
+                    TerminationReason::InitializationError(format!("Bootstrap failed: {}", e))
+                })?;
 
             let context = js_runtime.main_context();
             let isolate = js_runtime.v8_isolate();
@@ -228,14 +187,23 @@ impl Worker {
             debug!("bootstrap succeeded with triggers: {:?}", triggers);
 
             let object: v8::Local<v8::Object> = triggers.try_into().map_err(|e| {
-                AnyError::msg(format!("Failed to convert triggers to object: {:?}", e))
+                TerminationReason::InitializationError(format!(
+                    "Failed to convert triggers to object: {:?}",
+                    e
+                ))
             })?;
 
-            trigger_fetch = crate::util::extract_trigger("fetch", scope, object)
-                .ok_or_else(|| AnyError::msg("Fetch trigger not found in bootstrap response"))?;
+            trigger_fetch =
+                crate::util::extract_trigger("fetch", scope, object).ok_or_else(|| {
+                    TerminationReason::InitializationError(
+                        "Fetch trigger not found in bootstrap response".to_string(),
+                    )
+                })?;
             trigger_scheduled = crate::util::extract_trigger("scheduled", scope, object)
                 .ok_or_else(|| {
-                    AnyError::msg("Scheduled trigger not found in bootstrap response")
+                    TerminationReason::InitializationError(
+                        "Scheduled trigger not found in bootstrap response".to_string(),
+                    )
                 })?;
         };
 
@@ -248,7 +216,9 @@ impl Worker {
             let mod_id = js_runtime
                 .load_main_es_module_from_code(&specifier, script.code)
                 .await
-                .map_err(|e| AnyError::msg(format!("Failed to load main module: {}", e)))?;
+                .map_err(|e| {
+                    TerminationReason::Exception(format!("Failed to load main module: {}", e))
+                })?;
 
             let result = js_runtime.mod_evaluate(mod_id);
 
@@ -257,9 +227,14 @@ impl Worker {
                 pump_v8_message_loop: true,
             };
 
-            js_runtime.run_event_loop(opts).await?;
+            js_runtime
+                .run_event_loop(opts)
+                .await
+                .map_err(|e| TerminationReason::Exception(format!("Event loop error: {}", e)))?;
 
-            result.await?;
+            result.await.map_err(|e| {
+                TerminationReason::Exception(format!("Module evaluation error: {}", e))
+            })?;
         };
 
         debug!("main module evaluated");
@@ -271,13 +246,21 @@ impl Worker {
             isolate_handle,
             limits,
             memory_limit_hit_flag,
+            aborted: Arc::new(AtomicBool::new(false)),
         })
     }
 
-    pub async fn exec(
-        &mut self,
-        mut task: Task,
-    ) -> Result<crate::termination::TerminationReason, String> {
+    /// Abort the worker execution
+    pub fn abort(&mut self) {
+        self.aborted.store(true, Ordering::SeqCst);
+        self.isolate_handle.terminate_execution();
+    }
+
+    pub async fn exec(&mut self, mut task: Task) -> Result<(), TerminationReason> {
+        // Check if aborted before starting
+        if self.aborted.load(Ordering::SeqCst) {
+            return Err(TerminationReason::Aborted);
+        }
         debug!("executing task {:?}", task.task_type());
 
         // Start CPU time measurement
@@ -333,8 +316,10 @@ impl Worker {
         );
 
         // Check if memory limit was hit during execution
-        use std::sync::atomic::Ordering;
         let memory_limit_hit = self.memory_limit_hit_flag.swap(false, Ordering::SeqCst);
+
+        // Check if aborted
+        let was_aborted = self.aborted.load(Ordering::SeqCst);
 
         // Determine termination reason by inspecting guards FIRST, then trigger result and error
         // Guards must be checked first because terminate_execution() causes exceptions
@@ -351,46 +336,73 @@ impl Worker {
             .map(|e| e.to_string().contains("Wall-clock timeout exceeded"))
             .unwrap_or(false);
 
-        let termination_reason = if cpu_limit_hit {
-            crate::termination::TerminationReason::CpuTimeLimit
-        } else if wall_clock_hit || tokio_timeout_hit {
-            crate::termination::TerminationReason::WallClockTimeout
-        } else if memory_limit_hit {
-            crate::termination::TerminationReason::MemoryLimit
-        } else if let Some(exception_msg) = trigger_exception {
+        // Determine termination reason and return appropriate Result
+        if cpu_limit_hit {
+            debug!("worker terminated: reason=CpuTimeLimit");
+            return Err(TerminationReason::CpuTimeLimit);
+        }
+
+        if wall_clock_hit || tokio_timeout_hit {
+            debug!("worker terminated: reason=WallClockTimeout");
+            return Err(TerminationReason::WallClockTimeout);
+        }
+
+        if memory_limit_hit {
+            debug!("worker terminated: reason=MemoryLimit");
+            return Err(TerminationReason::MemoryLimit);
+        }
+
+        if was_aborted {
+            debug!("worker terminated: reason=Aborted");
+            return Err(TerminationReason::Aborted);
+        }
+
+        if let Some(exception_msg) = trigger_exception {
             // Trigger call failed (exception thrown during event dispatch)
             // Check if it's a memory-related exception
             if exception_msg.contains("Array buffer allocation failed")
                 || exception_msg.contains("RangeError")
                 || exception_msg.contains("out of memory")
             {
-                crate::termination::TerminationReason::MemoryLimit
-            } else {
-                crate::termination::TerminationReason::Exception
+                debug!("worker terminated: reason=MemoryLimit (from exception)");
+                return Err(TerminationReason::MemoryLimit);
             }
-        } else if result.is_ok() {
-            crate::termination::TerminationReason::Success
-        } else {
+            debug!("worker terminated: reason=Exception");
+            return Err(TerminationReason::Exception(exception_msg));
+        }
+
+        if let Err(error_msg) = result {
             // Check if it's a memory error by inspecting the error message
-            let error_msg = result
-                .as_ref()
-                .err()
-                .map(|e| e.to_string())
-                .unwrap_or_default();
             if error_msg.contains("out of memory")
                 || error_msg.contains("Array buffer allocation failed")
                 || error_msg.contains("RangeError")
             {
-                crate::termination::TerminationReason::MemoryLimit
-            } else {
-                crate::termination::TerminationReason::Exception
+                debug!("worker terminated: reason=MemoryLimit (from error)");
+                return Err(TerminationReason::MemoryLimit);
             }
-        };
+            debug!("worker terminated: reason=Exception");
+            return Err(TerminationReason::Exception(error_msg));
+        }
 
-        debug!("worker terminated: reason={:?}", termination_reason);
+        debug!("worker completed successfully");
+        Ok(())
+    }
+}
 
-        // Return the termination reason (guards dropped here, watchdogs cancelled)
-        // Always return Ok with the reason - the reason itself indicates success/failure
-        Ok(termination_reason)
+impl openworkers_core::Worker for Worker {
+    async fn new(
+        script: Script,
+        log_tx: Option<LogSender>,
+        limits: Option<RuntimeLimits>,
+    ) -> Result<Self, TerminationReason> {
+        Worker::new(script, log_tx, limits).await
+    }
+
+    async fn exec(&mut self, task: Task) -> Result<(), TerminationReason> {
+        Worker::exec(self, task).await
+    }
+
+    fn abort(&mut self) {
+        Worker::abort(self)
     }
 }

@@ -4,7 +4,7 @@ The original JavaScript runtime for OpenWorkers based on [deno_core](https://git
 
 ## Features
 
-- ✅ **Deno Extensions** - Lightweight selection of deno_* extensions
+- ✅ **Deno Extensions** - Lightweight selection of deno\_\* extensions
 - ✅ **Complete Web APIs** - fetch, URL, crypto, console, and more
 - ✅ **V8 Snapshots** - Fast startup with pre-compiled runtime
 - ✅ **Resource Limits** - CPU time and memory enforcement
@@ -15,6 +15,7 @@ The original JavaScript runtime for OpenWorkers based on [deno_core](https://git
 ## Performance
 
 Run benchmark:
+
 ```bash
 cargo run --example benchmark --release
 ```
@@ -29,14 +30,14 @@ Total:         avg=9ms, min=5.8ms, max=20ms
 
 ### Runtime Comparison
 
-| Runtime | Engine | Worker::new() | exec() | Total | Language |
-|---------|--------|---------------|--------|-------|----------|
-| **[V8](https://github.com/openworkers/openworkers-runtime-v8)** | V8 | 2.9ms | **15µs** ⚡ | ~3ms | Rust + C++ |
-| **[JSC](https://github.com/openworkers/openworkers-runtime-jsc)** | JavaScriptCore | 495µs* | 434µs | **935µs** 🏆 | Rust + C |
-| **[Boa](https://github.com/openworkers/openworkers-runtime-boa)** | Boa | 605µs | 441µs | 1.05ms | **100% Rust** |
-| **[Deno](https://github.com/openworkers/openworkers-runtime)** | V8 + Deno | 4.6ms | 1.07ms | 5.8ms | Rust + C++ |
+| Runtime                                                           | Engine         | Worker::new() | exec()      | Total        | Language      |
+| ----------------------------------------------------------------- | -------------- | ------------- | ----------- | ------------ | ------------- |
+| **[V8](https://github.com/openworkers/openworkers-runtime-v8)**   | V8             | 2.9ms         | **15µs** ⚡ | ~3ms         | Rust + C++    |
+| **[JSC](https://github.com/openworkers/openworkers-runtime-jsc)** | JavaScriptCore | 495µs\*       | 434µs       | **935µs** 🏆 | Rust + C      |
+| **[Boa](https://github.com/openworkers/openworkers-runtime-boa)** | Boa            | 605µs         | 441µs       | 1.05ms       | **100% Rust** |
+| **[Deno](https://github.com/openworkers/openworkers-runtime)**    | V8 + Deno      | 4.6ms         | 1.07ms      | 5.8ms        | Rust + C++    |
 
-*JSC has ~40ms warmup on first run, then stabilizes
+\*JSC has ~40ms warmup on first run, then stabilizes
 
 **Deno provides the most complete Web API compatibility** with rich Deno extensions.
 
@@ -50,7 +51,8 @@ openworkers-runtime = "0.2"
 ## Usage
 
 ```rust
-use openworkers_runtime::{Worker, Script, Task, HttpRequest, FetchInit};
+use openworkers_core::{Script, Task, HttpRequest, FetchInit};
+use openworkers_runtime_deno::Worker;
 
 #[tokio::main]
 async fn main() {
@@ -99,6 +101,7 @@ cargo test --test resource_limits
 ## Supported JavaScript APIs
 
 ### Deno Extensions
+
 - `deno_console` - Full console API
 - `deno_url` - Complete URL and URLSearchParams
 - `deno_web` - Streams, TextEncoder/Decoder, crypto
@@ -106,6 +109,7 @@ cargo test --test resource_limits
 - `deno_crypto` - Web Crypto API
 
 ### Custom Extensions
+
 - `addEventListener('fetch')` - HTTP request handler
 - `addEventListener('scheduled')` - Scheduled event handler
 - Resource limits (CPU time, memory)

@@ -6,26 +6,7 @@ use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::serde::Serialize;
 use log::debug;
-
-type ResponseSender = tokio::sync::oneshot::Sender<()>;
-
-#[derive(Debug)]
-pub struct ScheduledInit {
-    pub(crate) res_tx: ResponseSender,
-    pub(crate) time: u64,
-}
-
-impl ScheduledInit {
-    pub fn new(res_tx: ResponseSender, time: u64) -> Self {
-        ScheduledInit { res_tx, time }
-    }
-}
-
-impl deno_core::Resource for ScheduledInit {
-    fn close(self: Rc<Self>) {
-        println!("TODO Resource.close impl for ScheduledInit"); // TODO
-    }
-}
+use openworkers_core::ScheduledInit;
 
 #[derive(Debug, Serialize)]
 struct ScheduledEvent {

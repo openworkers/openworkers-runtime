@@ -1,9 +1,6 @@
-use log::debug;
-use log::error;
-use openworkers_runtime::ScheduledInit;
-use openworkers_runtime::Script;
-use openworkers_runtime::Task;
-use openworkers_runtime::Worker;
+use log::{debug, error};
+use openworkers_core::{ScheduledInit, Script, Task};
+use openworkers_runtime_deno::Worker;
 use tokio::sync::oneshot;
 
 fn get_path() -> String {
@@ -31,10 +28,7 @@ async fn main() -> Result<(), ()> {
     let (res_tx, res_rx) = oneshot::channel::<()>();
     let (end_tx, end_rx) = oneshot::channel::<()>();
 
-    let script = Script {
-        code: std::fs::read_to_string(file_path).unwrap(),
-        env: None,
-    };
+    let script = Script::new(std::fs::read_to_string(file_path).unwrap());
 
     let time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -51,7 +45,7 @@ async fn main() -> Result<(), ()> {
                 .exec(Task::Scheduled(Some(ScheduledInit::new(res_tx, time))))
                 .await
             {
-                Ok(_reason) => debug!("exec completed"),
+                Ok(()) => debug!("exec completed"),
                 Err(err) => error!("exec did not complete: {err}"),
             }
         });

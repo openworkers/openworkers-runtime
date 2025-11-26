@@ -1,5 +1,5 @@
-use openworkers_runtime::{HttpRequest, Script, Task, Worker};
-use std::collections::HashMap;
+use openworkers_core::{HttpRequest, Script, Task};
+use openworkers_runtime_deno::Worker;
 use std::time::Instant;
 
 #[tokio::main]
@@ -26,10 +26,7 @@ async fn main() {
 
         // Measure Worker::new
         let worker_start = Instant::now();
-        let script = Script {
-            code: code.to_string(),
-            env: Some(HashMap::new()),
-        };
+        let script = Script::new(code);
         let mut worker = match Worker::new(script, None, None).await {
             Ok(w) => w,
             Err(e) => {
@@ -50,14 +47,13 @@ async fn main() {
             body: None,
         };
 
-        let (res_tx, _rx) = tokio::sync::oneshot::channel();
-        let task = Task::Fetch(Some(openworkers_runtime::FetchInit::new(req, res_tx)));
+        let (task, _rx) = Task::fetch(req);
 
         match worker.exec(task).await {
-            Ok(reason) => {
+            Ok(()) => {
                 let exec_time = exec_start.elapsed();
                 exec_times.push(exec_time.as_micros());
-                println!("  exec():        {:?} (reason: {:?})", exec_time, reason);
+                println!("  exec():        {:?}", exec_time);
             }
             Err(e) => {
                 eprintln!("  Exec error: {}", e);

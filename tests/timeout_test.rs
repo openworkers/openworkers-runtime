@@ -1,6 +1,5 @@
-use openworkers_runtime::{
-    FetchInit, HttpRequest, RuntimeLimits, Script, Task, TerminationReason, Worker,
-};
+use openworkers_core::{HttpRequest, RuntimeLimits, Script, Task};
+use openworkers_runtime_deno::Worker;
 
 // Wall-clock timeout tests are Linux-only because they spin CPU waiting for timeout.
 // On macOS without CPU enforcement, these tests would burn CPU unnecessarily.
@@ -25,14 +24,10 @@ async fn test_wall_clock_timeout_infinite_loop() {
         });
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-    let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -40,14 +35,14 @@ async fn test_wall_clock_timeout_infinite_loop() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-    let result = worker.exec(task).await.unwrap();
+    let (task, _rx) = Task::fetch(req);
+    let result = worker.exec(task).await;
 
     // Should terminate due to wall-clock timeout
     assert_eq!(
         result,
-        TerminationReason::WallClockTimeout,
-        "Expected TerminationReason::WallClockTimeout, got: {:?}",
+        Err(TerminationReason::WallClockTimeout),
+        "Expected Err(TerminationReason::WallClockTimeout), got: {:?}",
         result
     );
 }
@@ -72,14 +67,10 @@ async fn test_wall_clock_timeout_async_loop() {
         });
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-    let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -87,14 +78,14 @@ async fn test_wall_clock_timeout_async_loop() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-    let result = worker.exec(task).await.unwrap();
+    let (task, _rx) = Task::fetch(req);
+    let result = worker.exec(task).await;
 
     // Should terminate due to wall-clock timeout
     assert_eq!(
         result,
-        TerminationReason::WallClockTimeout,
-        "Expected TerminationReason::WallClockTimeout, got: {:?}",
+        Err(TerminationReason::WallClockTimeout),
+        "Expected Err(TerminationReason::WallClockTimeout), got: {:?}",
         result
     );
 }
@@ -118,14 +109,10 @@ async fn test_fast_execution_no_timeout() {
         });
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-    let (res_tx, res_rx) = tokio::sync::oneshot::channel();
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -133,17 +120,12 @@ async fn test_fast_execution_no_timeout() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-    let result = worker.exec(task).await.unwrap();
+    let (task, rx) = Task::fetch(req);
+    let result = worker.exec(task).await;
 
-    assert_eq!(
-        result,
-        TerminationReason::Success,
-        "Expected TerminationReason::Success, got: {:?}",
-        result
-    );
+    assert!(result.is_ok(), "Expected Ok(), got: {:?}", result);
 
-    let response = res_rx.await.unwrap();
+    let response = rx.await.unwrap();
     assert_eq!(response.status, 200);
 }
 
@@ -166,14 +148,10 @@ async fn test_disabled_timeout_allows_long_execution() {
         });
     "#;
 
-    let script = Script {
-        code: code.to_string(),
-        env: None,
-    };
+    let script = Script::new(code);
 
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-    let (res_tx, res_rx) = tokio::sync::oneshot::channel();
     let req = HttpRequest {
         method: "GET".to_string(),
         url: "http://localhost/".to_string(),
@@ -181,17 +159,12 @@ async fn test_disabled_timeout_allows_long_execution() {
         body: None,
     };
 
-    let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-    let result = worker.exec(task).await.unwrap();
+    let (task, rx) = Task::fetch(req);
+    let result = worker.exec(task).await;
 
-    assert_eq!(
-        result,
-        TerminationReason::Success,
-        "Expected TerminationReason::Success, got: {:?}",
-        result
-    );
+    assert!(result.is_ok(), "Expected Ok(), got: {:?}", result);
 
-    let response = res_rx.await.unwrap();
+    let response = rx.await.unwrap();
     assert_eq!(response.status, 200);
 }
 
@@ -219,14 +192,10 @@ mod cpu_tests {
             });
         "#;
 
-        let script = Script {
-            code: code.to_string(),
-            env: None,
-        };
+        let script = Script::new(code);
 
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-        let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
         let req = HttpRequest {
             method: "GET".to_string(),
             url: "http://localhost/".to_string(),
@@ -234,14 +203,14 @@ mod cpu_tests {
             body: None,
         };
 
-        let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-        let result = worker.exec(task).await.unwrap();
+        let (task, _rx) = Task::fetch(req);
+        let result = worker.exec(task).await;
 
         // Should terminate due to CPU time limit
         assert_eq!(
             result,
-            TerminationReason::CpuTimeLimit,
-            "Expected TerminationReason::CpuTimeLimit, got: {:?}",
+            Err(TerminationReason::CpuTimeLimit),
+            "Expected Err(TerminationReason::CpuTimeLimit), got: {:?}",
             result
         );
     }
@@ -265,14 +234,10 @@ mod cpu_tests {
             });
         "#;
 
-        let script = Script {
-            code: code.to_string(),
-            env: None,
-        };
+        let script = Script::new(code);
 
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-        let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
         let req = HttpRequest {
             method: "GET".to_string(),
             url: "http://localhost/".to_string(),
@@ -280,14 +245,14 @@ mod cpu_tests {
             body: None,
         };
 
-        let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-        let result = worker.exec(task).await.unwrap();
+        let (task, _rx) = Task::fetch(req);
+        let result = worker.exec(task).await;
 
         // Should terminate due to CPU time limit
         assert_eq!(
             result,
-            TerminationReason::CpuTimeLimit,
-            "Expected TerminationReason::CpuTimeLimit, got: {:?}",
+            Err(TerminationReason::CpuTimeLimit),
+            "Expected Err(TerminationReason::CpuTimeLimit), got: {:?}",
             result
         );
     }
@@ -309,14 +274,10 @@ mod cpu_tests {
             });
         "#;
 
-        let script = Script {
-            code: code.to_string(),
-            env: None,
-        };
+        let script = Script::new(code);
 
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-        let (res_tx, res_rx) = tokio::sync::oneshot::channel();
         let req = HttpRequest {
             method: "GET".to_string(),
             url: "http://localhost/".to_string(),
@@ -324,17 +285,12 @@ mod cpu_tests {
             body: None,
         };
 
-        let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-        let result = worker.exec(task).await.unwrap();
+        let (task, rx) = Task::fetch(req);
+        let result = worker.exec(task).await;
 
-        assert_eq!(
-            result,
-            TerminationReason::Success,
-            "Expected TerminationReason::Success, got: {:?}",
-            result
-        );
+        assert!(result.is_ok(), "Expected Ok(), got: {:?}", result);
 
-        let response = res_rx.await.unwrap();
+        let response = rx.await.unwrap();
         assert_eq!(response.status, 200);
     }
 
@@ -356,14 +312,10 @@ mod cpu_tests {
             });
         "#;
 
-        let script = Script {
-            code: code.to_string(),
-            env: None,
-        };
+        let script = Script::new(code);
 
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
-        let (res_tx, _res_rx) = tokio::sync::oneshot::channel();
         let req = HttpRequest {
             method: "GET".to_string(),
             url: "http://localhost/".to_string(),
@@ -371,14 +323,14 @@ mod cpu_tests {
             body: None,
         };
 
-        let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
-        let result = worker.exec(task).await.unwrap();
+        let (task, _rx) = Task::fetch(req);
+        let result = worker.exec(task).await;
 
         // Should terminate due to CPU limit (hit before wall-clock)
         assert_eq!(
             result,
-            TerminationReason::CpuTimeLimit,
-            "Expected TerminationReason::CpuTimeLimit, got: {:?}",
+            Err(TerminationReason::CpuTimeLimit),
+            "Expected Err(TerminationReason::CpuTimeLimit), got: {:?}",
             result
         );
     }

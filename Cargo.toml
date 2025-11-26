@@ -1,6 +1,6 @@
 [package]
-name = "openworkers-runtime"
-version = "0.3.0"
+name = "openworkers-runtime-deno"
+version = "0.4.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,6 +9,11 @@ edition = "2024"
 actix = ["dep:actix-web"]
 
 [dependencies]
+
+# Common types
+# openworkers-core = { path = "../openworkers-core", features = ["deno", "testing"] }
+openworkers-core = { git = "https://github.com/openworkers/openworkers-core", tag = "v0.4.0", features = ["deno", "testing"] }
+
 bytes = { version = "1.11.0", features = ["serde"] }
 deno_console = "0.221.0"
 deno_core = "0.363.0"

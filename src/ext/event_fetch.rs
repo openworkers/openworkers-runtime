@@ -8,6 +8,7 @@ use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use log::debug;
+use openworkers_core::FetchInit;
 
 // Use our shared types
 type HttpRequest = crate::HttpRequest;
@@ -36,24 +37,6 @@ impl Into<crate::HttpResponse> for FetchResponse {
                 None => crate::ResponseBody::None,
             },
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct FetchInit {
-    pub(crate) req: crate::HttpRequest,
-    pub(crate) res_tx: ResponseSender,
-}
-
-impl FetchInit {
-    pub fn new(req: crate::HttpRequest, res_tx: ResponseSender) -> Self {
-        FetchInit { req, res_tx }
-    }
-}
-
-impl deno_core::Resource for FetchInit {
-    fn close(self: Rc<Self>) {
-        println!("TODO Resource.close impl for FetchInit"); // TODO
     }
 }
 

@@ -13,7 +13,7 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use openworkers_runtime::security::{
+//! use openworkers_runtime_deno::security::{
 //!     CustomAllocator, TimeoutGuard, CpuEnforcer, CpuTimer
 //! };
 //!

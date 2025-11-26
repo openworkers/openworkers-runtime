@@ -1,14 +1,11 @@
 use bytes::Bytes;
-
 use log::{debug, error};
-use openworkers_runtime::{FetchInit, HttpRequest, HttpResponse, Script, Task, Worker};
-
+use openworkers_core::{FetchInit, HttpRequest, HttpResponse, Script, Task, Worker};
+use openworkers_runtime_deno::Worker;
 use tokio::sync::oneshot::channel;
 
-use actix_web::App;
-use actix_web::HttpServer;
-use actix_web::web;
 use actix_web::web::Data;
+use actix_web::{App, HttpServer, web};
 
 struct AppState {
     code: String,
@@ -31,10 +28,7 @@ async fn handle_request(
     // Convert actix request to our HttpRequest type
     let req = HttpRequest::from_actix(&req, body);
 
-    let script = Script {
-        code: data.code.clone(),
-        env: None,
-    };
+    let script = Script::new(data.code.clone());
 
     let (res_tx, res_rx) = channel::<HttpResponse>();
     let task = Task::Fetch(Some(FetchInit::new(req, res_tx)));
@@ -48,7 +42,7 @@ async fn handle_request(
 
             debug!("exec fetch task");
             match worker.exec(task).await {
-                Ok(_reason) => debug!("exec completed"),
+                Ok(()) => debug!("exec completed"),
                 Err(err) => error!("exec did not complete: {err}"),
             }
         });
