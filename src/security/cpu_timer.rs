@@ -89,21 +89,22 @@ mod tests {
     fn test_cpu_timer_measures_computation() {
         let timer = CpuTimer::start();
 
-        // Do some CPU-intensive work
+        // Do some CPU-intensive work (use black_box to prevent optimization)
         let mut sum = 0u64;
         for i in 0..1_000_000 {
-            sum = sum.wrapping_add(i);
+            sum = std::hint::black_box(sum.wrapping_add(std::hint::black_box(i)));
         }
 
         let elapsed = timer.elapsed();
 
         // Prevent optimization
-        assert!(sum > 0);
+        assert!(std::hint::black_box(sum) > 0);
 
         // Should have measured some CPU time
         assert!(
             elapsed.as_micros() > 0,
-            "Should measure CPU time for computation"
+            "Should measure CPU time for computation, got {:?}",
+            elapsed
         );
     }
 

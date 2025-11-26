@@ -14,7 +14,6 @@ use std::rc::Rc;
 
 use deno_core::JsRuntime;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::url::Url;
 use deno_core::v8;
 
@@ -278,7 +277,7 @@ impl Worker {
     pub async fn exec(
         &mut self,
         mut task: Task,
-    ) -> Result<crate::termination::TerminationReason, CoreError> {
+    ) -> Result<crate::termination::TerminationReason, String> {
         debug!("executing task {:?}", task.task_type());
 
         // Start CPU time measurement
@@ -304,7 +303,27 @@ impl Worker {
             pump_v8_message_loop: true,
         };
 
-        let result = self.js_runtime.run_event_loop(opts).await;
+        // Wrap event loop with tokio timeout if wall-clock limit is set
+        // This ensures we stop even if Deno ops (like setTimeout, fetch) are pending
+        // terminate_execution() only stops running JS, not pending async ops
+        let result: Result<(), String> = if self.limits.max_wall_clock_time_ms > 0 {
+            let timeout_duration =
+                std::time::Duration::from_millis(self.limits.max_wall_clock_time_ms);
+            match tokio::time::timeout(timeout_duration, self.js_runtime.run_event_loop(opts)).await
+            {
+                Ok(inner_result) => inner_result.map_err(|e| e.to_string()),
+                Err(_elapsed) => {
+                    // Timeout elapsed - terminate V8 execution
+                    self.isolate_handle.terminate_execution();
+                    Err("Wall-clock timeout exceeded".to_string())
+                }
+            }
+        } else {
+            self.js_runtime
+                .run_event_loop(opts)
+                .await
+                .map_err(|e| e.to_string())
+        };
 
         // Log CPU time metrics
         let cpu_time = cpu_timer.elapsed();
@@ -317,12 +336,31 @@ impl Worker {
         use std::sync::atomic::Ordering;
         let memory_limit_hit = self.memory_limit_hit_flag.swap(false, Ordering::SeqCst);
 
-        // Determine termination reason by inspecting guards, trigger result, and error
-        let termination_reason = if let Some(exception_msg) = trigger_exception {
+        // Determine termination reason by inspecting guards FIRST, then trigger result and error
+        // Guards must be checked first because terminate_execution() causes exceptions
+        let cpu_limit_hit = cpu_enforcer
+            .as_ref()
+            .map(|e| e.was_terminated())
+            .unwrap_or(false);
+        let wall_clock_hit = wall_guard.was_triggered();
+
+        // Also check if tokio timeout triggered (for async ops like setTimeout, fetch)
+        let tokio_timeout_hit = result
+            .as_ref()
+            .err()
+            .map(|e| e.to_string().contains("Wall-clock timeout exceeded"))
+            .unwrap_or(false);
+
+        let termination_reason = if cpu_limit_hit {
+            crate::termination::TerminationReason::CpuTimeLimit
+        } else if wall_clock_hit || tokio_timeout_hit {
+            crate::termination::TerminationReason::WallClockTimeout
+        } else if memory_limit_hit {
+            crate::termination::TerminationReason::MemoryLimit
+        } else if let Some(exception_msg) = trigger_exception {
             // Trigger call failed (exception thrown during event dispatch)
             // Check if it's a memory-related exception
-            if memory_limit_hit
-                || exception_msg.contains("Array buffer allocation failed")
+            if exception_msg.contains("Array buffer allocation failed")
                 || exception_msg.contains("RangeError")
                 || exception_msg.contains("out of memory")
             {
@@ -333,35 +371,19 @@ impl Worker {
         } else if result.is_ok() {
             crate::termination::TerminationReason::Success
         } else {
-            // Check which limit was exceeded by inspecting the guards
-            let cpu_limit_hit = cpu_enforcer
+            // Check if it's a memory error by inspecting the error message
+            let error_msg = result
                 .as_ref()
-                .map(|e| e.was_terminated())
-                .unwrap_or(false);
-            let wall_clock_hit = wall_guard.was_triggered();
-
-            if cpu_limit_hit {
-                crate::termination::TerminationReason::CpuTimeLimit
-            } else if wall_clock_hit {
-                crate::termination::TerminationReason::WallClockTimeout
-            } else if memory_limit_hit {
-                // Memory limit was hit even if not in exception
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_default();
+            if error_msg.contains("out of memory")
+                || error_msg.contains("Array buffer allocation failed")
+                || error_msg.contains("RangeError")
+            {
                 crate::termination::TerminationReason::MemoryLimit
             } else {
-                // Check if it's a memory error by inspecting the error message
-                let error_msg = result
-                    .as_ref()
-                    .err()
-                    .map(|e| e.to_string())
-                    .unwrap_or_default();
-                if error_msg.contains("out of memory")
-                    || error_msg.contains("Array buffer allocation failed")
-                    || error_msg.contains("RangeError")
-                {
-                    crate::termination::TerminationReason::MemoryLimit
-                } else {
-                    crate::termination::TerminationReason::Exception
-                }
+                crate::termination::TerminationReason::Exception
             }
         };
 
