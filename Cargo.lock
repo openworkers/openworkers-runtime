@@ -2678,10 +2678,12 @@ name = "openworkers-core"
 version = "0.4.0"
 source = "git+https://github.com/openworkers/openworkers-core?tag=v0.4.0#4d98c2540f5255e73738e55f5afcdf213a4833a6"
 dependencies = [
+ "actix-web",
  "bytes",
  "deno_core",
  "serde",
  "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
