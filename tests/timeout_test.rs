@@ -1,6 +1,9 @@
 use openworkers_core::{HttpRequest, RuntimeLimits, Script, Task};
 use openworkers_runtime_deno::Worker;
 
+#[cfg(target_os = "linux")]
+use openworkers_core::TerminationReason;
+
 // Wall-clock timeout tests are Linux-only because they spin CPU waiting for timeout.
 // On macOS without CPU enforcement, these tests would burn CPU unnecessarily.
 
