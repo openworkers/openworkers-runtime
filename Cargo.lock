@@ -2826,8 +2826,8 @@ checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
 name = "openworkers-core"
-version = "0.4.1"
-source = "git+https://github.com/openworkers/openworkers-core?tag=v0.4.1#e50858d4c8603bb4e8f2860ec206d75309b5472a"
+version = "0.5.0"
+source = "git+https://github.com/openworkers/openworkers-core?tag=v0.5.0#ecf16f77b45c9ac7ba3dbb0b6fbc92e1ae0d8957"
 dependencies = [
  "actix-web",
  "bytes",
@@ -2839,7 +2839,7 @@ dependencies = [
 
 [[package]]
 name = "openworkers-runtime-deno"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "actix-web",
  "bytes",

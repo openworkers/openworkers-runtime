@@ -1,4 +1,4 @@
-use openworkers_core::{HttpRequest, ResponseBody, Script, Task};
+use openworkers_core::{HttpMethod, HttpRequest, RequestBody, ResponseBody, Script, Task};
 use openworkers_runtime_deno::Worker;
 use std::collections::HashMap;
 
@@ -19,10 +19,10 @@ async fn test_fetch_proxy() {
         .expect("Worker should initialize");
 
     let request = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: HashMap::new(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(request);

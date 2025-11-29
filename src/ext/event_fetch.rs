@@ -11,12 +11,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use log::debug;
 use openworkers_core::FetchInit;
+use openworkers_core::HttpRequest;
+use openworkers_core::ResponseSender;
 use tokio::sync::mpsc;
-
-// Use our shared types
-type HttpRequest = crate::HttpRequest;
-type HttpResponse = crate::HttpResponse;
-type ResponseSender = tokio::sync::oneshot::Sender<HttpResponse>;
 
 /// Buffer size for streaming response channel
 const STREAM_BUFFER_SIZE: usize = 16;
@@ -64,14 +61,17 @@ struct FetchEvent {
     rid: u32,
 }
 
-impl From<HttpRequest> for InnerRequest {
-    fn from(req: HttpRequest) -> Self {
-        InnerRequest {
-            method: req.method,
-            url: req.url,
-            headers: req.headers.into_iter().collect(),
-            body: req.body,
-        }
+fn convert_request(req: HttpRequest, _state: &mut OpState) -> InnerRequest {
+    use openworkers_core::RequestBody;
+    let body = match req.body {
+        RequestBody::Bytes(b) => Some(b),
+        RequestBody::None => None,
+    };
+    InnerRequest {
+        method: req.method.to_string(),
+        url: req.url,
+        headers: req.headers.into_iter().collect(),
+        body,
     }
 }
 
@@ -97,7 +97,7 @@ fn op_fetch_init(state: &mut OpState, #[smi] rid: ResourceId) -> Result<FetchEve
 
     let evt = Rc::try_unwrap(evt).unwrap();
 
-    let req = InnerRequest::from(evt.req);
+    let req = convert_request(evt.req, state);
 
     let rid = state.resource_table.add(FetchTx(evt.res_tx));
 

@@ -1,4 +1,4 @@
-use openworkers_core::{HttpRequest, Script, Task};
+use openworkers_core::{HttpMethod, HttpRequest, RequestBody, Script, Task};
 use openworkers_runtime_deno::Worker;
 use std::time::Instant;
 
@@ -41,10 +41,10 @@ async fn main() {
         // Measure exec
         let exec_start = Instant::now();
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "http://localhost/".to_string(),
             headers: Default::default(),
-            body: None,
+            body: RequestBody::None,
         };
 
         let (task, _rx) = Task::fetch(req);

@@ -1,6 +1,8 @@
 use bytes::Bytes;
 use log::{debug, error};
-use openworkers_core::{FetchInit, HttpRequest, HttpResponse, Script, Task};
+use openworkers_core::{
+    FetchInit, HttpRequest, HttpResponse, RequestBody, ResponseBody, Script, Task,
+};
 use openworkers_runtime_deno::Worker;
 use tokio::sync::oneshot::channel;
 

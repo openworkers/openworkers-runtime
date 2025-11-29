@@ -1,4 +1,4 @@
-use openworkers_core::{HttpRequest, ResponseBody, Script, Task};
+use openworkers_core::{HttpMethod, HttpRequest, RequestBody, ResponseBody, Script, Task};
 use openworkers_runtime_deno::Worker;
 use std::collections::HashMap;
 
@@ -27,10 +27,10 @@ async fn test_streaming_response() {
         .expect("Worker should initialize");
 
     let request = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: HashMap::new(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(request);
@@ -93,10 +93,10 @@ async fn test_fetch_streaming_proxy() {
         .expect("Worker should initialize");
 
     let request = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: HashMap::new(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(request);
@@ -123,3 +123,8 @@ async fn test_fetch_streaming_proxy() {
 
     assert_eq!(body_str, r#"{"status":"ok"}"#);
 }
+
+// NOTE: test_streaming_request_body and test_streaming_request_body_json
+// were removed as streaming input is no longer supported by design.
+// RequestBody only supports None and Bytes variants.
+// See the refactoring that split HttpBody into RequestBody and ResponseBody.

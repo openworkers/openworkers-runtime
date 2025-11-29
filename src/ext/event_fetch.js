@@ -29,7 +29,6 @@ function registerFetchEventListener(listener) {
   fetchEventListener = listener;
 }
 
-
 function triggerFetchEvent(rid) {
   if (!fetchEventListener) {
     throw new Error("No fetch event listener registered");
@@ -39,6 +38,7 @@ function triggerFetchEvent(rid) {
 
   const signal = newSignal();
 
+  // Request body is always buffered (streaming input not supported)
   const innerBody = evt.req.body
     ? new InnerBody({ body: evt.req.body, consumed: false })
     : null;

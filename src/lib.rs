@@ -14,6 +14,7 @@ pub use runtime::Worker;
 
 // Re-export common types from openworkers-common
 pub use openworkers_core::{
-    FetchInit, HttpRequest, HttpResponse, LogEvent, LogLevel, LogSender, ResponseBody,
-    RuntimeLimits, ScheduledInit, Script, Task, TaskType, TerminationReason, Worker as WorkerTrait,
+    FetchInit, HttpMethod, HttpRequest, HttpResponse, HttpResponseMeta, LogEvent, LogLevel,
+    LogSender, RequestBody, ResponseBody, ResponseSender, RuntimeLimits, ScheduledInit, Script,
+    Task, TaskType, TerminationReason, Worker as WorkerTrait,
 };

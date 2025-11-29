@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use openworkers_runtime_deno::Worker;
 
 openworkers_core::generate_worker_benchmarks!(Worker);

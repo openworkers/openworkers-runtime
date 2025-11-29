@@ -1,4 +1,4 @@
-use openworkers_core::{HttpRequest, RuntimeLimits, Script, Task};
+use openworkers_core::{HttpMethod, HttpRequest, RequestBody, RuntimeLimits, Script, Task};
 use openworkers_runtime_deno::Worker;
 use std::time::Duration;
 
@@ -58,10 +58,10 @@ async fn test_normal_execution_works() {
 
     // Create a fetch task
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(req);
@@ -118,10 +118,10 @@ async fn test_cpu_intensive_computation_termination() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, _rx) = Task::fetch(req);
@@ -188,10 +188,10 @@ async fn test_cpu_time_ignores_sleep() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(req);

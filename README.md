@@ -28,18 +28,17 @@ exec():        avg=1.5ms, min=1.07ms, max=2.7ms
 Total:         avg=9ms, min=5.8ms, max=20ms
 ```
 
-### Runtime Comparison
+### Runtime Comparison (v0.5.0)
 
-| Runtime                                                           | Engine         | Worker::new() | exec()      | Total        | Language      |
-| ----------------------------------------------------------------- | -------------- | ------------- | ----------- | ------------ | ------------- |
-| **[V8](https://github.com/openworkers/openworkers-runtime-v8)**   | V8             | 2.9ms         | **15µs** ⚡ | ~3ms         | Rust + C++    |
-| **[JSC](https://github.com/openworkers/openworkers-runtime-jsc)** | JavaScriptCore | 495µs\*       | 434µs       | **935µs** 🏆 | Rust + C      |
-| **[Boa](https://github.com/openworkers/openworkers-runtime-boa)** | Boa            | 605µs         | 441µs       | 1.05ms       | **100% Rust** |
-| **[Deno](https://github.com/openworkers/openworkers-runtime)**    | V8 + Deno      | 4.6ms         | 1.07ms      | 5.8ms        | Rust + C++    |
+| Runtime | Engine | Worker::new() | exec_simple | exec_json | Tests |
+|---------|--------|---------------|-------------|-----------|-------|
+| **[QuickJS](https://github.com/openworkers/openworkers-runtime-quickjs)** | QuickJS | 738µs | **12.4µs** ⚡ | **13.7µs** | 16/17 |
+| **[V8](https://github.com/openworkers/openworkers-runtime-v8)** | V8 | 790µs | 32.3µs | 34.3µs | **17/17** |
+| **[JSC](https://github.com/openworkers/openworkers-runtime-jsc)** | JavaScriptCore | 1.07ms | 30.3µs | 28.3µs | 15/17 |
+| **[Deno](https://github.com/openworkers/openworkers-runtime-deno)** | V8 + Deno | 2.56ms | 46.8µs | 38.7µs | **17/17** |
+| **[Boa](https://github.com/openworkers/openworkers-runtime-boa)** | Boa | 738µs | 12.4µs | 13.7µs | 13/17 |
 
-\*JSC has ~40ms warmup on first run, then stabilizes
-
-**Deno provides the most complete Web API compatibility** with rich Deno extensions.
+**Deno provides the most complete Web API compatibility** (17/17 tests) with rich Deno extensions.
 
 ## Installation
 

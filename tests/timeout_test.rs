@@ -1,4 +1,4 @@
-use openworkers_core::{HttpRequest, RuntimeLimits, Script, Task};
+use openworkers_core::{HttpMethod, HttpRequest, RequestBody, RuntimeLimits, Script, Task};
 use openworkers_runtime_deno::Worker;
 
 #[cfg(target_os = "linux")]
@@ -32,10 +32,10 @@ async fn test_wall_clock_timeout_infinite_loop() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, _rx) = Task::fetch(req);
@@ -75,10 +75,10 @@ async fn test_wall_clock_timeout_async_loop() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, _rx) = Task::fetch(req);
@@ -117,10 +117,10 @@ async fn test_fast_execution_no_timeout() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(req);
@@ -156,10 +156,10 @@ async fn test_disabled_timeout_allows_long_execution() {
     let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
     let req = HttpRequest {
-        method: "GET".to_string(),
+        method: HttpMethod::Get,
         url: "http://localhost/".to_string(),
         headers: Default::default(),
-        body: None,
+        body: RequestBody::None,
     };
 
     let (task, rx) = Task::fetch(req);
@@ -200,10 +200,10 @@ mod cpu_tests {
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "http://localhost/".to_string(),
             headers: Default::default(),
-            body: None,
+            body: RequestBody::None,
         };
 
         let (task, _rx) = Task::fetch(req);
@@ -242,10 +242,10 @@ mod cpu_tests {
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "http://localhost/".to_string(),
             headers: Default::default(),
-            body: None,
+            body: RequestBody::None,
         };
 
         let (task, _rx) = Task::fetch(req);
@@ -282,10 +282,10 @@ mod cpu_tests {
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "http://localhost/".to_string(),
             headers: Default::default(),
-            body: None,
+            body: RequestBody::None,
         };
 
         let (task, rx) = Task::fetch(req);
@@ -320,10 +320,10 @@ mod cpu_tests {
         let mut worker = Worker::new(script, None, Some(limits)).await.unwrap();
 
         let req = HttpRequest {
-            method: "GET".to_string(),
+            method: HttpMethod::Get,
             url: "http://localhost/".to_string(),
             headers: Default::default(),
-            body: None,
+            body: RequestBody::None,
         };
 
         let (task, _rx) = Task::fetch(req);
