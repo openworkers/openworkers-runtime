@@ -11,7 +11,13 @@ import {
 } from "ext:deno_fetch/23_request.js";
 import { toInnerResponse, Response } from "ext:deno_fetch/23_response.js";
 
-import { op_fetch_init, op_fetch_respond } from "ext:core/ops";
+import {
+  op_fetch_init,
+  op_fetch_respond,
+  op_fetch_respond_stream_start,
+  op_fetch_respond_stream_chunk,
+  op_fetch_respond_stream_end,
+} from "ext:core/ops";
 
 let fetchEventListener;
 
@@ -22,6 +28,7 @@ function registerFetchEventListener(listener) {
 
   fetchEventListener = listener;
 }
+
 
 function triggerFetchEvent(rid) {
   if (!fetchEventListener) {
@@ -58,9 +65,28 @@ function triggerFetchEvent(rid) {
 
       const inner = toInnerResponse(response);
 
-      const body = await response.bytes();
+      const meta = { status: inner.status, headerList: inner.headerList };
 
-      op_fetch_respond(evt.rid, { ...inner, body });
+      if (response.body) {
+        // Stream the response body
+        const streamRid = op_fetch_respond_stream_start(evt.rid, meta);
+
+        try {
+          const reader = response.body.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value && value.length > 0) {
+              await op_fetch_respond_stream_chunk(streamRid, value);
+            }
+          }
+        } finally {
+          op_fetch_respond_stream_end(streamRid);
+        }
+      } else {
+        // No body
+        op_fetch_respond(evt.rid, meta, null);
+      }
     },
   });
 }
