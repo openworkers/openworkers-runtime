@@ -132,9 +132,9 @@ dependencies = [
 
 [[package]]
 name = "actix-web"
-version = "4.12.0"
+version = "4.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2233f53f6cb18ae038ce1f0713ca0c72ca0c4b71fe9aaeb59924ce2c89c6dd85"
+checksum = "1654a77ba142e37f049637a3e5685f864514af11fcbc51cb51eb6596afe5b8d6"
 dependencies = [
  "actix-codec",
  "actix-http",
@@ -2826,8 +2826,8 @@ checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
 name = "openworkers-core"
-version = "0.5.0"
-source = "git+https://github.com/openworkers/openworkers-core?tag=v0.5.0#ecf16f77b45c9ac7ba3dbb0b6fbc92e1ae0d8957"
+version = "0.5.1"
+source = "git+https://github.com/openworkers/openworkers-core?tag=v0.5.1#147da6d6653a52527c4a38d8262cf6150c177499"
 dependencies = [
  "actix-web",
  "bytes",
@@ -2839,7 +2839,7 @@ dependencies = [
 
 [[package]]
 name = "openworkers-runtime-deno"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "actix-web",
  "bytes",

@@ -1,6 +1,6 @@
 [package]
 name = "openworkers-runtime-deno"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,7 +12,7 @@ actix = ["dep:actix-web", "openworkers-core/actix"]
 
 # Common types
 # openworkers-core = { path = "../openworkers-core", features = ["deno", "testing"] }
-openworkers-core = { git = "https://github.com/openworkers/openworkers-core", tag = "v0.5.0", features = ["deno", "testing"] }
+openworkers-core = { git = "https://github.com/openworkers/openworkers-core", tag = "v0.5.1", features = ["deno", "testing"] }
 
 bytes = { version = "1.11.0", features = ["serde"] }
 deno_console = "0.221.0"
@@ -35,7 +35,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tokio-stream = "0.1"
 
 # Optional dependencies for examples
-actix-web = { version = "4.12.0", features = ["macros"], optional = true }
+actix-web = { version = "4.12.1", features = ["macros"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 signal-hook = "0.3"
@@ -55,10 +55,6 @@ required-features = ["actix"]
 [dev-dependencies]
 ntest = "0.9"
 criterion = { version = "0.5", features = ["async_tokio"] }
-
-[[bench]]
-name = "request_body_benchmark"
-harness = false
 
 [[bench]]
 name = "generic_benchmark"

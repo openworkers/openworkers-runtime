@@ -12,6 +12,7 @@
     "openworkers",
     "primordials",
     "reqwest",
+    "rustls",
     "serde",
     "webidl"
   ],
