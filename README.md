@@ -44,7 +44,7 @@ Total:         avg=9ms, min=5.8ms, max=20ms
 
 ```toml
 [dependencies]
-openworkers-runtime = "0.2"
+openworkers-runtime-deno = "0.5"
 ```
 
 ## Usage
